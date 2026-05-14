@@ -5,6 +5,9 @@ const BACKEND_MIRRORS = [
     "inv.nadeko.net",
     "inv.thepixora.com"
 ];
+const NOCORS_BACKEND_MIRRORS = [
+    "inv.thepixora.com"
+]
 
 let temp_playlistAddress = "PLXPg0M1hQSff6jP8XGSDSsyf4lDdTfOXT";
 
@@ -57,17 +60,31 @@ async function getPlaylistData(playlistId) {
 }
 
 async function getVideo(videoId) {
-    for (let domain of BACKEND_MIRRORS) {
+    for (let domain of NOCORS_BACKEND_MIRRORS) {
         const targetUrl = `https://${domain}/api/v1/videos/${videoId}`;
 
         try {
+            console.log("Fetching "+targetUrl);
             const response = await fetch(targetUrl);
             if (!response.ok) {
                 console.warn(`${domain} Resp: `+response.status);
                 continue;
             }
             const data = await response.json();
-            return data;
+            const videoData = {
+                id: data.videoId,
+                title: data.title,
+                thumbnail: data.videoThumbnails,
+                description: data.description,
+                published: data.published,
+                publishedText: data.publishedText,
+                authorThumbnails: data.authorThumbnails,
+                length: data.lengthSeconds,
+                adaptiveFormats: data.adaptiveFormats,
+                formatSteams: data.formatSteams,
+                musicTracks: data.musicTracks,
+            };
+            return videoData;
         } catch (e) {
             console.error("getVideo Error on ${domain}: "+e);
         }
@@ -78,10 +95,23 @@ async function getVideo(videoId) {
 
 async function loadVideo(videoId) {
     const videoData = await getVideo(videoId);
-    console.log("Got data:",videoData);
-    const videoUrl = videoData.adaptiveFormats[0].url;
+    console.log("Got data:",videoData.adaptiveFormats);
+    const mp4Formats = {
+        r144p: 4,
+        r240p: 6,
+        r360p: 8,
+        r480p: 10,
+        r720p: 12,
+        r1080p: 14
+    }
+    const audioUrl = videoData.adaptiveFormats[3].url;
+    const videoUrl = videoData.adaptiveFormats[mp4Formats.r480p].url; // 480p
+    
+    document.getElementById("track-name").textContent = videoData.title;
+    
     video.src = videoUrl;
     videoPlayer.load();
+    videoPlayer.play();
 }
 
 getPlaylistData(temp_playlistAddress).then(PlaylistData => {
