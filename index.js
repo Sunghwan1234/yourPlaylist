@@ -3,7 +3,8 @@ const videoPlayer = document.getElementById("video");
 
 const BACKEND_MIRRORS = [
     "inv.nadeko.net",
-    "inv.thepixora.com"
+    "inv.thepixora.com",
+    "yt.chocolatemoo53.com"
 ];
 const NOCORS_BACKEND_MIRRORS = [
     "inv.thepixora.com"
@@ -95,6 +96,7 @@ async function getVideo(videoId) {
 
 async function loadVideo(videoId) {
     const videoData = await getVideo(videoId);
+    if (!videoData) {return;}
     console.log("Got data:",videoData.adaptiveFormats);
     const mp4Formats = {
         r144p: 4,
@@ -119,7 +121,7 @@ async function loadVideo(videoId) {
 getPlaylistData(temp_playlistAddress).then(PlaylistData => {
     const videoData = PlaylistData.videos;
     console.log("Video Data returned:",videoData);
-    if (videoData.length === 0) {
+    if (videoData.length == 0) {
         playlistContainer.innerHTML = "<p style='color:red;'>Could not fetch playlist metadata. All public instances are currently busy or rate-limited.</p>";
         return;
     }
@@ -127,13 +129,18 @@ getPlaylistData(temp_playlistAddress).then(PlaylistData => {
 
     for (let video of videoData) {
         const videoItem = `
-            <div class='video'>
+            <div class='video' id='${video.id}'>
                 <img src='${video.thumbnail}' alt='${video.title}'>
-                <h3 class='video_title'>${video.title}</h3>
+                <p class='video_title'>${video.title}</p>
                 <p class='video_author'>${video.author}</p>
-                <button class='video_loadButton_temp' onclick="loadVideo('${video.id}')">Play</button>
             </div>
         `;
         playlistContainer.insertAdjacentHTML('beforeend', videoItem);
     }
+    playlistContainer.addEventListener('click',function(event) {
+        const videoItem = event.target.closest('.video');
+        if (!videoItem) {return;}
+        const videoId = videoItem.id;
+        loadVideo(videoId);
+    });
 });
