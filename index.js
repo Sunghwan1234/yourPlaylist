@@ -67,7 +67,6 @@ async function getVideo(videoId) {
                 continue;
             }
             const data = await response.json();
-            console.log("Got data:",data);
             return data;
         } catch (e) {
             console.error("getVideo Error on ${domain}: "+e);
@@ -77,9 +76,12 @@ async function getVideo(videoId) {
     return [];
 }
 
-function loadVideo(videoId) {
-    const videoData = getVideo(videoId);
-    video.src = videoData.adaptiveFormats[0].url;
+async function loadVideo(videoId) {
+    const videoData = await getVideo(videoId);
+    console.log("Got data:",videoData);
+    const videoUrl = videoData.adaptiveFormats[0].url;
+    video.src = videoUrl;
+    videoPlayer.load();
 }
 
 getPlaylistData(temp_playlistAddress).then(PlaylistData => {
