@@ -32,9 +32,17 @@ async function getPlaylistVideos(playlistId) {
                     id: video.videoId,
                     title: video.title,
                     author: video.author,
+                    index: video.index,
+                    length: video.lengthSeconds,
                     thumbnail: `https://${domain}${video.videoThumbnails?.[0]?.url || ''}`
                 };
             });
+            const playlistData = {
+                title: data.title,
+                author: data.author,
+                authorThumbnail: '',
+                description: data.description
+            }
             console.log(`Successfully imported ${videoData.length} videos from ${domain}`);
             return videoData;
         } catch (e) {
