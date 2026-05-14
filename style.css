@@ -5,6 +5,14 @@ body {
     display: flex;
     flex-direction: column;
 }
-#playlistContainer > * {
+.video {
     background: rgb(170, 170, 170);
+    border-radius: 5px;
+
+    width: 128px;
+    text-align: center;
+    margin: 5px;
+}
+.video img {
+    width: 90%;
 }

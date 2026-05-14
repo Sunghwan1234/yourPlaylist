@@ -12,7 +12,7 @@ let playlist;
 /** Get the Playlist */
 async function getPlaylistVideos(playlistId) {
     for (let domain of BACKEND_MIRRORS) {
-        const targetUrl = `https://${domain}/api/v1/playlist?list=${playlistId}`;
+        const targetUrl = `https://${domain}/api/v1/playlists/${playlistId}`;
         console.log(`Polling server path: ${targetUrl}`);
 
         try {
@@ -22,7 +22,7 @@ async function getPlaylistVideos(playlistId) {
                 continue;
             }
             console.log("got ",response);
-            const data = response.json();
+            const data = await response.json();
             if (!data.videos || !Array.isArray(data.videos)) {
                 console.warn(`${domain} returned data, but 'videos' array was missing.`);
                 continue;
@@ -32,7 +32,7 @@ async function getPlaylistVideos(playlistId) {
                     id: video.videoId,
                     title: video.title,
                     author: video.author,
-                    thumbnail: video.videoThumbnails?.[0]?.url || ''
+                    thumbnail: `https://${domain}${video.videoThumbnails?.[0]?.url || ''}`
                 };
             });
             console.log(`Successfully imported ${videoData.length} videos from ${domain}`);
