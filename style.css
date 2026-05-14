@@ -1,0 +1,10 @@
+body {
+    margin: 0;
+}
+#playlistContainer {
+    display: flex;
+    flex-direction: column;
+}
+#playlistContainer > * {
+    background: rgb(170, 170, 170);
+}
