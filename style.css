@@ -22,6 +22,6 @@ body {
 .video > img {
     width: 100%;
 }
-.video_title {
+.video > * {
     margin: 0;
 }

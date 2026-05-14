@@ -1,4 +1,5 @@
 const playlistContainer = document.getElementById("playlistContainer");
+const videoPlayer = document.getElementById("video");
 
 const BACKEND_MIRRORS = [
     "inv.nadeko.net",
@@ -10,7 +11,7 @@ let temp_playlistAddress = "PLXPg0M1hQSff6jP8XGSDSsyf4lDdTfOXT";
 let playlist;
 
 /** Get the Playlist */
-async function getPlaylistVideos(playlistId) {
+async function getPlaylistData(playlistId) {
     for (let domain of BACKEND_MIRRORS) {
         const targetUrl = `https://${domain}/api/v1/playlists/${playlistId}`;
         console.log(`Polling server path: ${targetUrl}`);
@@ -41,10 +42,11 @@ async function getPlaylistVideos(playlistId) {
                 title: data.title,
                 author: data.author,
                 authorThumbnail: '',
-                description: data.description
+                description: data.description,
+                videos: videoData
             }
-            console.log(`Successfully imported ${videoData.length} videos from ${domain}`);
-            return videoData;
+            console.log(`Successfully imported ${playlistData.length} videos from ${domain}`);
+            return playlistData;
         } catch (e) {
             console.error(`getPlaylistVideos Error on ${domain}: `+e);
         }
@@ -54,19 +56,48 @@ async function getPlaylistVideos(playlistId) {
     return [];
 }
 
-getPlaylistVideos(temp_playlistAddress).then(videoData => {
+async function getVideo(videoId) {
+    for (let domain of BACKEND_MIRRORS) {
+        const targetUrl = `https://${domain}/api/v1/videos/${videoId}`;
+
+        try {
+            const response = await fetch(targetUrl);
+            if (!response.ok) {
+                console.warn(`${domain} Resp: `+response.status);
+                continue;
+            }
+            const data = await response.json();
+            console.log("Got data:",data);
+            return data;
+        } catch (e) {
+            console.error("getVideo Error on ${domain}: "+e);
+        }
+    }
+    console.error("All public API instances failed.");
+    return [];
+}
+
+function loadVideo(videoId) {
+    const videoData = getVideo(videoId);
+    video.src = videoData.adaptiveFormats[0].url;
+}
+
+getPlaylistData(temp_playlistAddress).then(PlaylistData => {
+    const videoData = PlaylistData.videos;
     console.log("Video Data returned:",videoData);
     if (videoData.length === 0) {
         playlistContainer.innerHTML = "<p style='color:red;'>Could not fetch playlist metadata. All public instances are currently busy or rate-limited.</p>";
         return;
     }
-    playlistContainer.innerHTML = ""
+    playlistContainer.innerHTML = "";
 
     for (let video of videoData) {
         const videoItem = `
             <div class='video'>
                 <img src='${video.thumbnail}' alt='${video.title}'>
-                <h3 class='video_title'>${video.title}</h2>
+                <h3 class='video_title'>${video.title}</h3>
+                <p class='video_author'>${video.author}</p>
+                <button class='video_loadButton_temp' onclick="loadVideo('${video.id}')">Load Video</button>
             </div>
         `;
         playlistContainer.insertAdjacentHTML('beforeend', videoItem);
