@@ -1,7 +1,11 @@
 const playlistContainer = document.getElementById("playlistContainer");
 const videoPlayer = document.getElementById("video");
+const thumbnail = document.getElementById("thumbnail");
+
+const settingsPanel = document.getElementById("s_settingsPanel");
 
 const BACKEND_MIRRORS = [
+    "invidious.nerdvpn.de",
     "inv.nadeko.net",
     "inv.thepixora.com",
     "yt.chocolatemoo53.com"
@@ -49,6 +53,7 @@ async function getPlaylistData(playlistId) {
                 description: data.description,
                 videos: videoData
             }
+            console.log(playlistData);
             console.log(`Successfully imported ${playlistData.length} videos from ${domain}`);
             return playlistData;
         } catch (e) {
@@ -61,12 +66,15 @@ async function getPlaylistData(playlistId) {
 }
 
 async function getVideo(videoId) {
-    for (let domain of NOCORS_BACKEND_MIRRORS) {
+    for (let domain of BACKEND_MIRRORS) {
         const targetUrl = `https://${domain}/api/v1/videos/${videoId}`;
 
         try {
             console.log("Fetching "+targetUrl);
-            const response = await fetch(targetUrl);
+            const response = await fetch(targetUrl, {
+                method: 'GET',
+                mode: 'cors'
+            });
             if (!response.ok) {
                 console.warn(`${domain} Resp: `+response.status);
                 continue;
@@ -75,7 +83,7 @@ async function getVideo(videoId) {
             const videoData = {
                 id: data.videoId,
                 title: data.title,
-                thumbnail: data.videoThumbnails,
+                thumbnails: data.videoThumbnails,
                 description: data.description,
                 published: data.published,
                 publishedText: data.publishedText,
@@ -97,28 +105,40 @@ async function getVideo(videoId) {
 async function loadVideo(videoId) {
     const videoData = await getVideo(videoId);
     if (!videoData) {return;}
-    console.log("Got data:",videoData.adaptiveFormats);
-    const mp4Formats = {
-        r144p: 4,
-        r240p: 6,
-        r360p: 8,
-        r480p: 10,
-        r720p: 12,
-        r1080p: 14
+    console.log("Got data:",videoData.thumbnails);
+    if (localStorage.getItem('s_useThumbnail')=='true') {
+        thumbnail.src = videoData.thumbnails[0].url;
+    } else {
+        const mp4Formats = {
+            r144p: 4,
+            r240p: 6,
+            r360p: 8,
+            r480p: 10,
+            r720p: 12,
+            r1080p: 14
+        }
+        const videoUrl = videoData.adaptiveFormats[mp4Formats.r480p].url; // 480p
+        video.src = videoUrl;
+        videoPlayer.load();
+        videoPlayer.play();
     }
     const audioUrl = videoData.adaptiveFormats[3].url;
-    const videoUrl = videoData.adaptiveFormats[mp4Formats.r480p].url; // 480p
-    
-    document.getElementById("track-name").textContent = videoData.title;
-    
-    video.src = videoUrl;
-    videoPlayer.load();
     const audio = new Audio(audioUrl);
-    videoPlayer.play();
     audio.play().catch(error => console.error(error));
+
+    document.getElementById("track-name").textContent = videoData.title;
 }
 
-getPlaylistData(temp_playlistAddress).then(PlaylistData => {
+function showSettings() {
+    settingsPanel.hidden = !settingsPanel.hidden;
+}
+
+async function init() {
+    const saved_playlist = await get('playlistData') || [];
+    if (saved_playlist.length>0) {
+
+    }
+    getPlaylistData(temp_playlistAddress).then(PlaylistData => {
     const videoData = PlaylistData.videos;
     console.log("Video Data returned:",videoData);
     if (videoData.length == 0) {
@@ -144,3 +164,19 @@ getPlaylistData(temp_playlistAddress).then(PlaylistData => {
         loadVideo(videoId);
     });
 });
+}
+
+// Settings
+$("#s_useThumbnail").prop("checked", localStorage.getItem('s_useThumbnail')=='true');
+
+// Running
+
+$("#s_useThumbnail").change(function(){
+    if ($(this).is(':checked')) {
+        localStorage.setItem('s_useThumbnail', 'true');
+    } else {
+        localStorage.setItem('s_useThumbnail', 'false');
+    }
+})
+
+init();

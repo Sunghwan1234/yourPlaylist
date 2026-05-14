@@ -5,13 +5,26 @@
     <meta charset="UTF-8">
     <title>YourPlayList</title>
     <link rel="stylesheet" href="style.css">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
 </head>
 <body>
-    <video id="video"></video>
+    <div id="absolute">
+        <video id="video"></video>
+        <img id="thumbnail" src="" alt="">
+        <button id="settings" onclick="showSettings()">⛭</button>
+        <div hidden id="s_settingsPanel">
+            <p>Setings</p>
+            <span><input id="s_useThumbnail" type="checkbox"><p>Use Thumbnail for Video</p></span>
+        </div>
+    </div>
+    
     <div class="box">
         <div id="playlistContainer"></div>
         <p id="track-name">TRACK NAME!</p>
     </div>
+    <script type="module">
+        import { get, set } from 'https://jsdelivr.net';
+    </script>
     <script src="index.js"></script>
 </body>
 </html>
