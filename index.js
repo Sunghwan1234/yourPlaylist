@@ -111,7 +111,9 @@ async function loadVideo(videoId) {
     
     video.src = videoUrl;
     videoPlayer.load();
+    const audio = new Audio(audioUrl);
     videoPlayer.play();
+    audio.play().catch(error => console.error(error));
 }
 
 getPlaylistData(temp_playlistAddress).then(PlaylistData => {
@@ -129,7 +131,7 @@ getPlaylistData(temp_playlistAddress).then(PlaylistData => {
                 <img src='${video.thumbnail}' alt='${video.title}'>
                 <h3 class='video_title'>${video.title}</h3>
                 <p class='video_author'>${video.author}</p>
-                <button class='video_loadButton_temp' onclick="loadVideo('${video.id}')">Load Video</button>
+                <button class='video_loadButton_temp' onclick="loadVideo('${video.id}')">Play</button>
             </div>
         `;
         playlistContainer.insertAdjacentHTML('beforeend', videoItem);
