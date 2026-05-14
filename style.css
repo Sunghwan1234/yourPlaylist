@@ -19,9 +19,9 @@ body {
     margin: 5px;
     padding: 10px;
 }
-.video img {
-    width: 90%;
+.video > img {
+    width: 100%;
 }
-.video-title {
+.video_title {
     margin: 0;
 }
