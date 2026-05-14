@@ -4,15 +4,24 @@ body {
 #playlistContainer {
     display: flex;
     flex-direction: column;
+    margin: 5px;
+    background: lightgrey;
+    flex-wrap: nowrap;
+    align-items: center;
+    width: 20vw;
+    border-radius: 5px;
 }
 .video {
     background: rgb(170, 170, 170);
     border-radius: 5px;
 
-    width: 128px;
     text-align: center;
     margin: 5px;
+    padding: 10px;
 }
 .video img {
     width: 90%;
+}
+.video-title {
+    margin: 0;
 }
