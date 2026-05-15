@@ -2,6 +2,10 @@ body {
     margin: 0;
     background-color: lightgray;
 }
+button {
+    border: none;
+    border-radius: 5px;
+}
 .box {
     display: flex;
 }
@@ -15,34 +19,39 @@ body {
     margin: 5px;
     background: #444444;
     flex-wrap: nowrap;
-    align-items: center;
     width: 20vw;
     border-radius: 5px;
 }
-.video {
-    background: #444444;
-    border-radius: 5px;
 
-    text-align: center;
-    margin: 1vw;
-    padding: 1vw;
+.video {
+    display: flex;
+        align-items: center;
+
+    background: #444444;
+
+    padding: 5px;
 }
 .video:hover {
     background: #666666;
 }
+
 .video > img {
-    width: 100%;
+    max-width: 100%;
+    width: 40%;
     border-radius: 5px;
 }
-.video > * {
+.video_details {
+    margin-left: 5px;
+}
+.video_details > * {
     margin: 0;
     color: white;
 }
 .video_title {
-    font-size: 4vw;
+    font-size: 20px;
 }
 .video_author {
-    font-size: 2.5vw;
+    font-size: 12px;
 }
 #video {
     top: 0px;
@@ -52,6 +61,13 @@ body {
 #thumbnail {
     width: 100vw;
     z-index: -2;
+}
+#playlistControls {
+    width: 95%;
+    margin: 5px;
+}
+#hidePlaylistContainer {
+    padding: 5px;
 }
 @media (max-width: 600px) {
     #playlistContainer {
@@ -67,6 +83,13 @@ body {
         display: flex;
         flex-direction: column;
         align-items: center;
+    }
+
+    .video_title {
+        font-size: 5vw;
+    }
+    .video_author {
+        font-size: 2.5vw;
     }
 }
 #settings {
@@ -87,7 +110,7 @@ body {
     position: absolute;
     top: 8vw; right: 1vw;
 
-    background-color: lightgray;
+    background-color: white;
     border-radius: 1vw;
     padding: 1vw;
 }

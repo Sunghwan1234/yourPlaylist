@@ -139,14 +139,14 @@ function showPlaylist() {
         playlistContainer.innerHTML = "<p style='color:red;'>Could not fetch playlist metadata. All public instances are currently busy or rate-limited.</p>";
         return;
     }
-    playlistContainer.innerHTML = "";
-
     for (let video of videoData) {
         const videoItem = `
             <div class='video' id='${video.id}'>
                 <img src='${video.thumbnail}' alt='${video.title}'>
-                <p class='video_title'>${video.title}</p>
-                <p class='video_author'>${video.author}</p>
+                <div class='video_details'>
+                    <p class='video_title'>${video.title}</p>
+                    <p class='video_author'>${video.author}</p>
+                </div>
             </div>
         `;
         playlistContainer.insertAdjacentHTML('beforeend', videoItem);
