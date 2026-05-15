@@ -165,8 +165,8 @@ function savePlaylist() {
 }
 
 async function init() {
-    const saved_playlist = JSON.parse(localStorage.getItem('playlist')) || [];
-    if (saved_playlist.videos.length>0) {
+    const saved_playlist = JSON.parse(localStorage.getItem('playlist'));
+    if (saved_playlist && saved_playlist.videos.length>0) {
         console.log("Loaded saved playlist!");
         playlist = saved_playlist;
     } else {
