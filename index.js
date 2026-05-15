@@ -5,10 +5,10 @@ const thumbnail = document.getElementById("thumbnail");
 const settingsPanel = document.getElementById("s_settingsPanel");
 
 const BACKEND_MIRRORS = [
-    "invidious.nerdvpn.de",
     "inv.nadeko.net",
     "inv.thepixora.com",
-    "yt.chocolatemoo53.com"
+    "yt.chocolatemoo53.com",
+    "invidious.nerdvpn.de", // Does Not Work
 ];
 const NOCORS_BACKEND_MIRRORS = [
     "inv.thepixora.com"
@@ -17,6 +17,10 @@ const NOCORS_BACKEND_MIRRORS = [
 let temp_playlistAddress = "PLXPg0M1hQSff6jP8XGSDSsyf4lDdTfOXT";
 
 let playlist;
+
+function getLocalSetting(setting) {
+    return localStorage.getItem("s_"+setting);
+}
 
 /** Get the Playlist */
 async function getPlaylistData(playlistId) {
@@ -30,7 +34,6 @@ async function getPlaylistData(playlistId) {
                 console.warn(`${domain} response: ${response.status}`);
                 continue;
             }
-            console.log("got ",response);
             const data = await response.json();
             if (!data.videos || !Array.isArray(data.videos)) {
                 console.warn(`${domain} returned data, but 'videos' array was missing.`);
@@ -53,8 +56,8 @@ async function getPlaylistData(playlistId) {
                 description: data.description,
                 videos: videoData
             }
+            console.log(`Successfully imported ${videoData.length} videos from ${domain}`);
             console.log(playlistData);
-            console.log(`Successfully imported ${playlistData.length} videos from ${domain}`);
             return playlistData;
         } catch (e) {
             console.error(`getPlaylistVideos Error on ${domain}: `+e);
@@ -71,10 +74,7 @@ async function getVideo(videoId) {
 
         try {
             console.log("Fetching "+targetUrl);
-            const response = await fetch(targetUrl, {
-                method: 'GET',
-                mode: 'cors'
-            });
+            const response = await fetch(targetUrl);
             if (!response.ok) {
                 console.warn(`${domain} Resp: `+response.status);
                 continue;
@@ -105,11 +105,11 @@ async function getVideo(videoId) {
 async function loadVideo(videoId) {
     const videoData = await getVideo(videoId);
     if (!videoData) {return;}
-    console.log("Got data:",videoData.thumbnails);
-    if (localStorage.getItem('s_useThumbnail')=='true') {
+    console.log("Got data:",videoData);
+    if (getLocalSetting('useThumbnail')=='true') {
         thumbnail.src = videoData.thumbnails[0].url;
     } else {
-        const mp4Formats = {
+        const formats = { // Add 1 for webm
             r144p: 4,
             r240p: 6,
             r360p: 8,
@@ -117,7 +117,7 @@ async function loadVideo(videoId) {
             r720p: 12,
             r1080p: 14
         }
-        const videoUrl = videoData.adaptiveFormats[mp4Formats.r480p].url; // 480p
+        const videoUrl = videoData.adaptiveFormats[formats.r480p+1].url; // 480p
         video.src = videoUrl;
         videoPlayer.load();
         videoPlayer.play();
@@ -132,14 +132,8 @@ async function loadVideo(videoId) {
 function showSettings() {
     settingsPanel.hidden = !settingsPanel.hidden;
 }
-
-async function init() {
-    const saved_playlist = await get('playlistData') || [];
-    if (saved_playlist.length>0) {
-
-    }
-    getPlaylistData(temp_playlistAddress).then(PlaylistData => {
-    const videoData = PlaylistData.videos;
+function showPlaylist() {
+    const videoData = playlist.videos;
     console.log("Video Data returned:",videoData);
     if (videoData.length == 0) {
         playlistContainer.innerHTML = "<p style='color:red;'>Could not fetch playlist metadata. All public instances are currently busy or rate-limited.</p>";
@@ -163,7 +157,24 @@ async function init() {
         const videoId = videoItem.id;
         loadVideo(videoId);
     });
-});
+}
+
+function savePlaylist() {
+    localStorage.setItem('playlist', JSON.stringify(playlist));
+    console.log("Saved Playlist!");
+}
+
+async function init() {
+    const saved_playlist = JSON.parse(localStorage.getItem('playlist')) || [];
+    if (saved_playlist.videos.length>0) {
+        console.log("Loaded saved playlist!");
+        playlist = saved_playlist;
+    } else {
+        console.log("Saved Playlist: "+saved_playlist);
+        playlist = await getPlaylistData(temp_playlistAddress);
+        savePlaylist();
+    }
+    showPlaylist();
 }
 
 // Settings

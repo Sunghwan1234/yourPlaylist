@@ -1,12 +1,11 @@
 body {
     margin: 0;
+    background-color: lightgray;
 }
 .box {
     display: flex;
 }
-#absolute {
-    height: 0;
-}
+
 #absolute > * {
     position: absolute;
 }
@@ -56,13 +55,18 @@ body {
 }
 @media (max-width: 600px) {
     #playlistContainer {
-        width: 45vw;
+        width: auto;
     }
     #absolute > * {
         position: relative;
     }
     .box {
-        flex-direction: column-reverse;
+        flex-direction: column;
+    }
+    #absolute {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
     }
 }
 #settings {
@@ -92,5 +96,5 @@ body {
 }
 #s_settingsPanel > span p {
     display: inline;
-    font-size: 3vw;
+    font-size: 16px;
 }
