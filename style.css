@@ -8,19 +8,47 @@ button {
 }
 .box {
     display: flex;
+    z-index: 1;   
 }
-
+.box > * {
+    z-index: 1;
+}
 #absolute > * {
     position: absolute;
 }
 #playlistContainer {
     display: flex;
     flex-direction: column;
-    margin: 5px;
     background: #444444;
     flex-wrap: nowrap;
     width: 20vw;
-    border-radius: 5px;
+    height: 90vh;
+    border-radius: 10px;
+
+    position: relative;
+    left: 5px;
+    top: 5px;
+    margin-right: 5px;
+
+    overflow-x: hidden;
+    overflow-y: scroll;
+
+    transition: left 0.7s;
+    transition-timing-function: ease;
+}
+
+#playlistContainer::-webkit-scrollbar {
+    background: #444444;
+    border-radius: 10px;
+}
+#playlistContainer::-webkit-scrollbar-track {
+    background: #444444;
+    border-radius: 10px;
+}
+#playlistContainer::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 0 5px 5px 0;
+  border-left: 1px solid #444444; /* adds space around thumb */
 }
 
 .video {
@@ -56,7 +84,7 @@ button {
 #video {
     top: 0px;
     width: 100vw;
-    z-index: -1;
+    z-index: 0;
 }
 #thumbnail {
     width: 100vw;
@@ -65,9 +93,18 @@ button {
 #playlistControls {
     width: 95%;
     margin: 5px;
+    position: sticky;
+    top: 5px;
 }
-#hidePlaylistContainer {
+#togglePlaylistContainer { /* This is a button btw */
     padding: 5px;
+}
+#togglePlaylistContainer:hover {
+    background: lightgray;
+}
+.showPlaylistContainer {
+    position: fixed;
+    left: 10px;
 }
 @media (max-width: 600px) {
     #playlistContainer {
@@ -90,9 +127,6 @@ button {
     .video_author {
         font-size: 2.5vw;
     }
-    #video {
-        z-index: 0;
-    }
 }
 #settings {
     position: absolute;
@@ -104,6 +138,8 @@ button {
     border-radius: 1vw;
     justify-content: center;
     align-items: center;
+
+    z-index: 2;
 }
 #settings:hover {
     background-color: #fefefe;
@@ -115,11 +151,15 @@ button {
     background-color: white;
     border-radius: 1vw;
     padding: 1vw;
+    z-index: 2;
+}
+#s_settingsPanel > * {
+    z-index: 2;
 }
 #s_settingsPanel > p {
     margin: 0;
 }
-#s_settingsPanel > span p {
+#s_settingsPanel > input p {
     display: inline;
     font-size: 16px;
 }

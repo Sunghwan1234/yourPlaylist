@@ -1,5 +1,10 @@
 const playlistContainer = document.getElementById("playlistContainer");
+const togglePlaylistContainerButton = document.getElementById("togglePlaylistContainer");
+
 const videoPlayer = document.getElementById("video");
+const audioPlayer = new Audio();
+audioPlayer.preload = "auto";
+
 const thumbnail = document.getElementById("thumbnail");
 
 const settingsPanel = document.getElementById("s_settingsPanel");
@@ -67,12 +72,13 @@ async function getPlaylistData(playlistId) {
     console.error("All public API instances failed.");
     return [];
 }
-
-async function getVideo(videoId, force) {
+/** Get a video from a URL */
+async function getVideo(videoId, force, saveTo=null) {
+    let saved_video;
     if (!force) {
-        const saved_video = localStorage.getItem(videoId);
+        saved_video = JSON.parse(localStorage.getItem(videoId));
         if (saved_video) {
-            console.log("Found saved video: "+saved_video);
+            console.log(`Found saved video: ${saved_video}`);
             return saved_video;
         }
     }
@@ -90,6 +96,7 @@ async function getVideo(videoId, force) {
             const videoData = {
                 id: data.videoId,
                 title: data.title,
+                author: data.author,
                 thumbnails: data.videoThumbnails,
                 description: data.description,
                 published: data.published,
@@ -100,6 +107,15 @@ async function getVideo(videoId, force) {
                 formatSteams: data.formatSteams,
                 musicTracks: data.musicTracks,
             };
+            if (!force && !saved_video || saveTo) { // maybe () around !saved_video || saveTo
+                console.log("Saving Video...");
+                if (saveTo) {
+                    console.log("Overwriting saved video to alternative:",videoData.title);
+                    localStorage.setItem(saveTo, JSON.stringify(videoData));
+                } else {
+                    localStorage.setItem(videoId, JSON.stringify(videoData));
+                }
+            }
             return videoData;
         } catch (e) {
             console.error("getVideo Error on ${domain}: "+e);
@@ -109,18 +125,60 @@ async function getVideo(videoId, force) {
     return [];
 }
 
-async function loadVideo(videoId) {
-    const videoData = await getVideo(videoId, false);
-    if (!videoData) {return;}
-    console.log("Got data:",videoData);
+/**
+ * 
+ * @param {*} videoData 
+ * @returns video ID of the most similar video
+ */
+async function searchSimilarVideo(videoData) {
+    for (let domain of BACKEND_MIRRORS) {
+        const targetUrl = `https://${domain}/api/v1/search?`+
+        `q=${encodeURIComponent(`${videoData.title} ${videoData.author}`)}`+
+        `&type=video`;
+        try {
+            const response = await fetch(targetUrl);
+            if (!response.ok) {
+                console.warn(`SearchSimilar: Domain ${domain} Resp: `,response.status);
+                continue;
+            }
+            const data = await response.json();
+            console.log(`Data:`,data);
+            for (let video in data) {
+                if (video.author.contains("Topic")) {
+                    data.remove(video); // TODO: check if ts work
+                }
+                if (videoData.author.contains(video.author) || video.author.contains(videoData.author)) {
+                    if (!video.author.contains("Topic")) {
+                        return video.videoId;
+                    }
+                } else {
+                    // remove
+                }
+            }
+        } catch (e) {
+            console.warn("Unknown error:",e);
+        }
+    }
+    console.error("No similar videos found, or domains returned error");
+    return null;
+}
 
+async function loadVideo(videoId, saveTo=null) {
+    videoPlayer.url = '';
+    videoPlayer.hidden = getLocalSetting('useThumbnail')=='true';
+    let videoData = await getVideo(videoId, localStorage.getItem('s_forceLoad')=='true', saveTo);
+    if (!videoData) {return;}
+    console.log("Got VideoData:",videoData);
+
+    videoPlayer.pause();
+    audioPlayer.currentTime = 0;
     const audioUrl = videoData.adaptiveFormats[3].url;
-    const audio = new Audio(audioUrl);
+    audioPlayer.src = audioUrl;
 
     if (getLocalSetting('useThumbnail')=='true') {
         thumbnail.src = videoData.thumbnails[0].url;
 
-        audio.play().catch(error => console.error(error));
+        audioPlayer.play().then(() => updateMediaSession(videoData));
     } else {
         const formats = { // Add 1 for webm
             r144p: 4,
@@ -132,38 +190,63 @@ async function loadVideo(videoId) {
         }
         const videoUrl = videoData.adaptiveFormats[formats.r480p+1].url; // 480p
         videoPlayer.src = videoUrl;
-        videoPlayer.hidden = false;
         videoPlayer.load();
 
         videoPlayer.addEventListener('play', () => {
-            audio.play();
+            audioPlayer.play().then(() => updateMediaSession(videoData));
         });
         videoPlayer.addEventListener('pause', () => {
-            audio.pause();
+            audioPlayer.pause();
         });
 
         videoPlayer.addEventListener('seeking', () => {
-            audio.currentTime = videoPlayer.currentTime;
+            audioPlayer.currentTime = videoPlayer.currentTime;
         });
         videoPlayer.addEventListener('seeked', () => {
-            audio.currentTime = videoPlayer.currentTime;
+            audioPlayer.currentTime = videoPlayer.currentTime;
         });
 
         videoPlayer.addEventListener('volumechange', () => {
-            audio.volume = videoPlayer.volume;
-            audio.muted = videoPlayer.muted;
+            audioPlayer.volume = videoPlayer.volume;
+            audioPlayer.muted = videoPlayer.muted;
         });
         videoPlayer.addEventListener('ratechange', () => {
-            audio.playbackRate = videoPlayer.playbackRate;
+            audioPlayer.playbackRate = videoPlayer.playbackRate;
         });
 
-        videoPlayer.play();
+        videoPlayer.play().catch(() => {
+            console.log("attempting search with video title",videoData.title);
+            const searchResult = searchSimilarVideo(videoData);
+            if (searchResult) {
+                loadVideo(searchResult, videoId);
+                return;
+            }
+
+        });
     }
 
-    
-    //audio.play().catch(error => console.error(error));
-
     document.getElementById("track-name").textContent = videoData.title;
+    document.body.style.background = "black";
+}
+
+function updateMediaSession(videoData) {
+    if ('mediaSession' in navigator) {
+        navigator.mediaSession.metadata = new MediaMetadata({
+            title: videoData.title,
+            artist: videoData.author,
+            album: ''
+        });
+
+        // Map lock-screen controls so system actions don't break execution
+        navigator.mediaSession.setActionHandler('play', () => audioPlayer.play());
+        navigator.mediaSession.setActionHandler('pause', () => audioPlayer.pause());
+        navigator.mediaSession.setActionHandler('nexttrack', () => track(1));
+        navigator.mediaSession.setActionHandler('previoustrack', () => track(-1));
+    }
+}
+
+function track(offset) {
+
 }
 
 function showSettings() {
@@ -196,6 +279,18 @@ function showPlaylist() {
     });
 }
 
+function togglePlaylistContainer() {
+    if (togglePlaylistContainerButton.classList.contains("showPlaylistContainer")) {
+        playlistContainer.style.left = "5px";
+        togglePlaylistContainerButton.classList.remove("showPlaylistContainer");
+        togglePlaylistContainerButton.textContent = "Hide";
+    } else {
+        playlistContainer.style.left = "-22vw";
+        togglePlaylistContainerButton.classList.add("showPlaylistContainer");
+        togglePlaylistContainerButton.textContent = "Show";
+    }
+}
+
 function savePlaylist() {
     localStorage.setItem('playlist', JSON.stringify(playlist));
     console.log("Saved Playlist!");
@@ -224,6 +319,13 @@ $("#s_useThumbnail").change(function(){
         localStorage.setItem('s_useThumbnail', 'true');
     } else {
         localStorage.setItem('s_useThumbnail', 'false');
+    }
+})
+$("#s_forceLoad").change(function(){
+    if ($(this).is(':checked')) {
+        localStorage.setItem('s_forceLoad', 'true');
+    } else {
+        localStorage.setItem('s_forceLoad', 'false');
     }
 })
 
