@@ -84,12 +84,14 @@ button {
         flex-direction: column;
         align-items: center;
     }
-
     .video_title {
         font-size: 5vw;
     }
     .video_author {
         font-size: 2.5vw;
+    }
+    #video {
+        z-index: 0;
     }
 }
 #settings {

@@ -46,7 +46,7 @@ async function getPlaylistData(playlistId) {
                     author: video.author,
                     index: video.index,
                     length: video.lengthSeconds,
-                    thumbnail: `https://${domain}${video.videoThumbnails?.[0]?.url || ''}`
+                    thumbnail: `https://${domain}${video.videoThumbnails?.[0]?.url || ''}`,
                 };
             });
             const playlistData = {
@@ -68,7 +68,14 @@ async function getPlaylistData(playlistId) {
     return [];
 }
 
-async function getVideo(videoId) {
+async function getVideo(videoId, force) {
+    if (!force) {
+        const saved_video = localStorage.getItem(videoId);
+        if (saved_video) {
+            console.log("Found saved video: "+saved_video);
+            return saved_video;
+        }
+    }
     for (let domain of BACKEND_MIRRORS) {
         const targetUrl = `https://${domain}/api/v1/videos/${videoId}`;
 
@@ -103,11 +110,17 @@ async function getVideo(videoId) {
 }
 
 async function loadVideo(videoId) {
-    const videoData = await getVideo(videoId);
+    const videoData = await getVideo(videoId, false);
     if (!videoData) {return;}
     console.log("Got data:",videoData);
+
+    const audioUrl = videoData.adaptiveFormats[3].url;
+    const audio = new Audio(audioUrl);
+
     if (getLocalSetting('useThumbnail')=='true') {
         thumbnail.src = videoData.thumbnails[0].url;
+
+        audio.play().catch(error => console.error(error));
     } else {
         const formats = { // Add 1 for webm
             r144p: 4,
@@ -118,13 +131,37 @@ async function loadVideo(videoId) {
             r1080p: 14
         }
         const videoUrl = videoData.adaptiveFormats[formats.r480p+1].url; // 480p
-        video.src = videoUrl;
+        videoPlayer.src = videoUrl;
+        videoPlayer.hidden = false;
         videoPlayer.load();
+
+        videoPlayer.addEventListener('play', () => {
+            audio.play();
+        });
+        videoPlayer.addEventListener('pause', () => {
+            audio.pause();
+        });
+
+        videoPlayer.addEventListener('seeking', () => {
+            audio.currentTime = videoPlayer.currentTime;
+        });
+        videoPlayer.addEventListener('seeked', () => {
+            audio.currentTime = videoPlayer.currentTime;
+        });
+
+        videoPlayer.addEventListener('volumechange', () => {
+            audio.volume = videoPlayer.volume;
+            audio.muted = videoPlayer.muted;
+        });
+        videoPlayer.addEventListener('ratechange', () => {
+            audio.playbackRate = videoPlayer.playbackRate;
+        });
+
         videoPlayer.play();
     }
-    const audioUrl = videoData.adaptiveFormats[3].url;
-    const audio = new Audio(audioUrl);
-    audio.play().catch(error => console.error(error));
+
+    
+    //audio.play().catch(error => console.error(error));
 
     document.getElementById("track-name").textContent = videoData.title;
 }
@@ -134,7 +171,7 @@ function showSettings() {
 }
 function showPlaylist() {
     const videoData = playlist.videos;
-    console.log("Video Data returned:",videoData);
+    console.log("Video Data returned:",playlist);
     if (videoData.length == 0) {
         playlistContainer.innerHTML = "<p style='color:red;'>Could not fetch playlist metadata. All public instances are currently busy or rate-limited.</p>";
         return;
@@ -165,8 +202,8 @@ function savePlaylist() {
 }
 
 async function init() {
-    const saved_playlist = JSON.parse(localStorage.getItem('playlist')) || [];
-    if (saved_playlist.videos.length>0) {
+    const saved_playlist = JSON.parse(localStorage.getItem('playlist'));
+    if (saved_playlist && saved_playlist.videos.length>0) {
         console.log("Loaded saved playlist!");
         playlist = saved_playlist;
     } else {
