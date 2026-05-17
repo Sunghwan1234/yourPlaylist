@@ -1,4 +1,5 @@
 const playlistContainer = document.getElementById("playlistContainer");
+const playlistElement = document.getElementById("playlist");
 const togglePlaylistContainerButton = document.getElementById("togglePlaylistContainer");
 
 const videoPlayer = document.getElementById("video");
@@ -11,77 +12,84 @@ const settingsPanel = document.getElementById("s_settingsPanel");
 
 const BACKEND_MIRRORS = [
     "inv.nadeko.net",
-    "inv.thepixora.com",
     "yt.chocolatemoo53.com",
     "invidious.nerdvpn.de", // Does Not Work
+    "yewtu.be",
+    "inv.thepixora.com",
 ];
 const NOCORS_BACKEND_MIRRORS = [
     "inv.thepixora.com"
 ];
 
 const CORS_PROXIES = [
-    "corsproxy.io"
+    "corsproxy.io/?url=",
+    "proxy.corsfix.com/?",
 ];
 function addCors_Proxy(cors_proxy, url) {
-    return `https://${cors_proxy}/?url=${encodeURIComponent(url)}`;
+    return `https://${cors_proxy}${url}`;
 }
 
 let temp_playlistAddress = "PLXPg0M1hQSff6jP8XGSDSsyf4lDdTfOXT";
 
-let playlist;
+let playlist; // PlaylistData
+let currentVideo; // VideoData
+let currentVideoIndex=0;
+let backgroundPlaybackStatus = false;
 
-function getLocalSetting(setting) {
-    return localStorage.getItem("s_"+setting);
+function getLocalBoolean(setting) {
+    return localStorage.getItem("s_"+setting)=='true';
+}
+/** Awaits a fetch with response ok. You only need to check if it is null. */
+async function fetchWithCatch(targetUrl, Error="") {
+    const response = await fetch(targetUrl).catch((error) => {
+        return null;
+    });
+    if (response && response.ok) {
+        return response;
+    }
 }
 
 /** Get the Playlist */
-async function getPlaylistData(playlistId) {
+async function fetchPlaylistData(playlistId) {
     for (let domain of BACKEND_MIRRORS) {
         const targetUrl = `https://${domain}/api/v1/playlists/${playlistId}`;
         console.log(`Polling server path: ${targetUrl}`);
 
-        try {
-            const response = await fetch(targetUrl);
-            if (!response.ok) {
-                console.warn(`${domain} response: ${response.status}`);
-                continue;
-            }
-            const data = await response.json();
-            if (!data.videos || !Array.isArray(data.videos)) {
-                console.warn(`${domain} returned data, but 'videos' array was missing.`);
-                continue;
-            }
-            const videoData = data.videos.map(video => {
-                return {
-                    id: video.videoId,
-                    title: video.title,
-                    author: video.author,
-                    index: video.index,
-                    length: video.lengthSeconds,
-                    thumbnail: `https://${domain}${video.videoThumbnails?.[0]?.url || ''}`,
-                };
-            });
-            const playlistData = {
-                title: data.title,
-                author: data.author,
-                authorThumbnail: '',
-                description: data.description,
-                videos: videoData
-            }
-            console.log(`Successfully imported ${videoData.length} videos from ${domain}`);
-            console.log(playlistData);
-            return playlistData;
-        } catch (e) {
-            console.error(`getPlaylistVideos Error on ${domain}: `+e);
+        const response = await fetchWithCatch(targetUrl);
+        if (!response) {continue;}
+        const data = await response.json();
+        if (!data.videos || !Array.isArray(data.videos)) {
+            console.warn(`${domain} returned data, but 'videos' array was missing.`);
+            continue;
         }
+        const videoData = data.videos.map(video => {
+            return {
+                id: video.videoId,
+                title: video.title,
+                author: video.author,
+                index: video.index,
+                length: video.lengthSeconds,
+                thumbnail: `https://${domain}${video.videoThumbnails?.[0]?.url || ''}`,
+            };
+        });
+        const playlistData = {
+            title: data.title,
+            author: data.author,
+            authorThumbnail: '',
+            description: data.description,
+            videos: videoData
+        }
+        console.log(`Successfully imported ${videoData.length} videos from ${domain}`);
+        console.log(playlistData);
+        return playlistData;
     }
 
     console.error("All public API instances failed.");
     return null;
 }
 /** Get a video from a URL */
-async function getVideoData(videoId) {
-    for (let domain of BACKEND_MIRRORS) {
+async function fetchVideo(videoId) {
+    for (let domain of NOCORS_BACKEND_MIRRORS) {
         const targetUrl = `https://${domain}/api/v1/videos/${videoId}`;
         console.log("Fetching "+targetUrl);
         const response = await fetch(targetUrl).catch((error) => {
@@ -100,10 +108,11 @@ async function getVideoData(videoId) {
     return null;
 }
 
-async function getProxiedVideoData(videoId) {
+async function fetchProxiedVideo(videoId) {
     for (let proxy of CORS_PROXIES) {
         for (let domain of BACKEND_MIRRORS) {
-            const targetUrl = addCors_Proxy(proxy, `${domain}/api/v1/videos/${videoId}`);
+            console.log(`gPVD: URL: https://${domain}/api/v1/videos/${videoId}`)
+            const targetUrl = addCors_Proxy(proxy, `https://${domain}/api/v1/videos/${videoId}`);
             console.log(`gPVD: Fetching ${targetUrl}`);
             const response = await fetch(targetUrl).catch((error) => {
                 return null;
@@ -116,45 +125,55 @@ async function getProxiedVideoData(videoId) {
     return null;
 }
 
-async function loadVideoData(videoId, force, saveTo=null) {
-    let saved_video;
-    if (!force) {
+/**
+ * Loads pure unreadable Video Data. Use parseVideoData()
+ * @param {String} videoId 
+ * @param {boolean} forceLoad 
+ * @param {String} forceSaveAsId Enter a URL to overwrite the save
+ * @returns 
+ */
+async function loadVideoData(videoId, forceLoad, forceSaveAsId=null) {
+    console.log('Loading Video Data of',videoId,", fl,fs",forceLoad,forceSaveAsId);
+    let saved_video = null;
+    if (!forceLoad) {
         saved_video = JSON.parse(localStorage.getItem(videoId));
         if (saved_video) {
-            console.log(`Found saved video: ${saved_video}`);
+            console.log(`Found saved video:`,saved_video);
             return saved_video;
         }
     }
-    let videoData = await getVideoData(videoId);
-    if (!videoData) {
-        videoData = await getProxiedVideoData(videoId);
-        if (!videoData) {
+    let video = await fetchVideo(videoId);
+    if (!video) {
+        video = await fetchProxiedVideo(videoId);
+        if (!video) {
             console.error("All attempts to load Video Data failed.");
             return null;
         }
     }
-
-    if ((!force && !saved_video) || saveTo) { // maybe () around !saved_video || saveTo
-        console.log("Saving Video...");
-        if (saveTo) {
+    const videoData = parseVideoData(video);
+    if ((!forceLoad && !saved_video) || forceSaveAsId) { // maybe () around !saved_video || saveTo
+        console.log("Saving VideoData:",videoData);
+        if (forceSaveAsId) {
             console.log("Overwriting saved video to alternative:",videoData.title);
-            localStorage.setItem(saveTo, JSON.stringify(videoData));
+            localStorage.setItem(forceSaveAsId, JSON.stringify(videoData));
         } else {
             localStorage.setItem(videoId, JSON.stringify(videoData));
         }
+    } else {
+        console.log(saved_video, forceLoad);
     }
-    return returnVideoData(videoData);
+    return videoData;
 }
-
-function returnVideoData(data) {
+/** Parses a Video Object into readable data. */
+function parseVideoData(data) {
     return {
         id: data.videoId,
         title: data.title,
         author: data.author,
-        thumbnails: data.videoThumbnails,
         description: data.description,
         published: data.published,
         publishedText: data.publishedText,
+        thumbnails: data.videoThumbnails,
         authorThumbnails: data.authorThumbnails,
         length: data.lengthSeconds,
         adaptiveFormats: data.adaptiveFormats,
@@ -164,7 +183,7 @@ function returnVideoData(data) {
 }
 
 /**
- * 
+ * Searched using videoData for the most similar video.
  * @param {*} videoData 
  * @returns video ID of the most similar video
  */
@@ -174,23 +193,29 @@ async function searchSimilarVideo(videoData) {
         `q=${encodeURIComponent(`${videoData.title} ${videoData.author}`)}`+
         `&type=video`;
         try {
-            const response = await fetch(targetUrl);
-            if (!response.ok) {
-                console.warn(`SearchSimilar: Domain ${domain} Resp: `,response.status);
+            console.log("searchSimilar Fetching:",targetUrl);
+            const response = await fetch(targetUrl).catch((error) => {
+                return null;
+            });
+            if (!response || !response.ok) {
+                if (response) {
+                    console.warn(`SearchSimilar: Domain ${domain} Resp: `,response);
+                }
                 continue;
             }
             const data = await response.json();
-            console.log(`Data:`,data);
-            for (let video in data) {
-                if (video.author.contains("Topic")) {
-                    data.remove(video); // TODO: check if ts work
+            console.log(`searchSimilar Data:`,data);
+
+            for (let video of data) {
+                if (video.author.includes("Topic")) {
+                    continue;
                 }
-                if (videoData.author.contains(video.author) || video.author.contains(videoData.author)) {
-                    if (!video.author.contains("Topic")) {
+                const authorMatches = videoData.author.includes(video.author) || video.author.includes(videoData.author);
+                if (authorMatches) {
+                    if (!video.author.includes("Topic")) {
+                        console.log("searchSimilar Found:",video);
                         return video.videoId;
                     }
-                } else {
-                    // remove
                 }
             }
         } catch (e) {
@@ -201,19 +226,21 @@ async function searchSimilarVideo(videoData) {
     return null;
 }
 
-async function loadVideo(videoId, saveTo=null) {
-    videoPlayer.url = '';
-    videoPlayer.hidden = getLocalSetting('useThumbnail')=='true';
-    let videoData = await loadVideoData(videoId, localStorage.getItem('s_forceLoad')=='true', saveTo);
-    if (!videoData) {return;}
-    console.log("Got VideoData:",videoData);
-
+/**
+ * Loads a video into the videoplayer and audioplayer
+ * @param {*} videoData 
+ * @param {*} saveAsId ID to overwrite original
+ * @returns {Boolean} Success or not
+ */
+async function loadPlayer(videoData) {
     videoPlayer.pause();
+    videoPlayer.url = '';
+    videoPlayer.hidden = getLocalBoolean('useThumbnail');
     audioPlayer.currentTime = 0;
     const audioUrl = videoData.adaptiveFormats[3].url;
     audioPlayer.src = audioUrl;
 
-    if (getLocalSetting('useThumbnail')=='true') {
+    if (getLocalBoolean('useThumbnail')) {
         thumbnail.src = videoData.thumbnails[0].url;
 
         audioPlayer.play().then(() => updateMediaSession(videoData));
@@ -227,62 +254,95 @@ async function loadVideo(videoId, saveTo=null) {
             r1080p: 14
         }
         const videoUrl = videoData.adaptiveFormats[formats.r480p+1].url; // 480p
+        console.log("loadPlayer: Loading Video URL:",videoUrl);
         videoPlayer.src = videoUrl;
-        videoPlayer.load();
+        await videoPlayer.load();
 
-        videoPlayer.addEventListener('play', () => {
-            audioPlayer.play().then(() => updateMediaSession(videoData));
+        const videoPlayed = await videoPlayer.play().catch((error) => {
+            videoPlayer.pause();
+            // Perhaps return a better error
+            console.error("videoPlayer Error;",error);
+            return "failed";
         });
-        videoPlayer.addEventListener('pause', () => {
-            audioPlayer.pause();
-        });
-
-        videoPlayer.addEventListener('seeking', () => {
-            audioPlayer.currentTime = videoPlayer.currentTime;
-        });
-        videoPlayer.addEventListener('seeked', () => {
-            audioPlayer.currentTime = videoPlayer.currentTime;
-        });
-
-        videoPlayer.addEventListener('volumechange', () => {
-            audioPlayer.volume = videoPlayer.volume;
-            audioPlayer.muted = videoPlayer.muted;
-        });
-        videoPlayer.addEventListener('ratechange', () => {
-            audioPlayer.playbackRate = videoPlayer.playbackRate;
-        });
-
-        videoPlayer.play().catch(() => {
-            console.log("attempting search with video title",videoData.title);
-            const searchResult = searchSimilarVideo(videoData);
-            if (searchResult) {
-                loadVideo(searchResult, videoId);
-                return;
-            }
-
-        });
+        if (videoPlayed=="failed") {return false;}
     }
 
-    document.getElementById("track-name").textContent = videoData.title;
+    document.getElementById("video_name").textContent = videoData.title;
+    document.getElementById("video_author").textContent = videoData.author;
     document.body.style.background = "black";
+
+    console.log("Loading was successful!");
+    return true;
+}
+/**
+ * 
+ * @param {*} videoId 
+ * @param {*} forceLoad 
+ * @param {*} saveAsId Force Save as Id
+ * @returns 
+ */
+async function loadVideo(videoId, forceLoad=getLocalBoolean('forceLoad'), saveAsId=null) {
+    console.log(`Loading Video`,videoId);
+    let videoData = await loadVideoData(videoId, forceLoad, saveAsId);
+    if (!videoData) {return;}
+    let videoLoaded = await loadPlayer(videoData);
+    if (!videoLoaded) {
+        if (!forceLoad) {
+            console.error(`Saved Video ${videoData.title} failed to load. ForceLoading...`);
+            videoData = await loadVideoData(videoId, true, videoId);
+            if (!videoData) {return;}
+            videoLoaded = await loadPlayer(videoData);
+        }
+        if (!videoLoaded) {
+            console.error(`Video ${videoData.title} failed to forceload.`);
+
+            const isConfirmed = confirm("Try searching for similar videos?");
+
+            if (isConfirmed) {
+                console.log("Attempting search with video title",videoData.title);
+                const searchResult = await searchSimilarVideo(videoData);
+                if (searchResult) {
+                    videoLoaded = await loadVideo(searchResult, true, videoId);
+                    if (!videoLoaded) {
+                        console.error(`loadVideo: All attempts to load ${videoData.title} failed.`);
+                        return;
+                    }
+                } else {
+                    console.error("loadVideo: searchResult returned null.");
+                    return;
+                }
+            } else {
+                return;
+            }
+        }
+    }
+    currentVideo = videoData;
+    return true;
+}
+
+async function loadIndex(videoIndex, forceLoad=getLocalBoolean('forceLoad'), saveAsId=null) {
+    const videoId = playlist.videos[videoIndex].id;
+    await loadVideo(videoI, forceLoad, saveAsId);
+    currentVideoIndex = videoIndex;
 }
 
 function updateMediaSession(videoData) {
     if ('mediaSession' in navigator) {
-        navigator.mediaSession.metadata = new MediaMetadata({
-            title: videoData.title,
-            artist: videoData.author,
-            album: ''
-        });
+        if (videoData) {
+            navigator.mediaSession.metadata = new MediaMetadata({
+                title: videoData.title,
+                artist: videoData.author,
+                album: ''
+            });
+        }
 
         // Map lock-screen controls so system actions don't break execution
-        navigator.mediaSession.setActionHandler('play', () => audioPlayer.play());
-        navigator.mediaSession.setActionHandler('pause', () => audioPlayer.pause());
+        navigator.mediaSession.setActionHandler('play', () => videoPlayer.play());
+        navigator.mediaSession.setActionHandler('pause', () => videoPlayer.pause());
         navigator.mediaSession.setActionHandler('nexttrack', () => track(1));
         navigator.mediaSession.setActionHandler('previoustrack', () => track(-1));
     }
 }
-
 function track(offset) {
 
 }
@@ -292,9 +352,9 @@ function showSettings() {
 }
 function showPlaylist() {
     const videoData = playlist.videos;
-    console.log("Video Data returned:",playlist);
+    console.log("Playlist Videos returned:",playlist);
     if (videoData.length == 0) {
-        playlistContainer.innerHTML = "<p style='color:red;'>Could not fetch playlist metadata. All public instances are currently busy or rate-limited.</p>";
+        playlistElement.innerHTML = "<p style='color:red;'>Could not fetch playlist metadata. All public instances are currently busy or rate-limited.</p>";
         return;
     }
     for (let video of videoData) {
@@ -307,14 +367,16 @@ function showPlaylist() {
                 </div>
             </div>
         `;
-        playlistContainer.insertAdjacentHTML('beforeend', videoItem);
+        playlistElement.insertAdjacentHTML('beforeend', videoItem);
     }
-    playlistContainer.addEventListener('click',function(event) {
+    playlistElement.addEventListener('click',function(event) {
         const videoItem = event.target.closest('.video');
         if (!videoItem) {return;}
         const videoId = videoItem.id;
-        loadVideo(videoId);
+        loadVideo(videoId, getLocalBoolean('forceLoad'), getLocalBoolean("forceSave")?videoId:null);
     });
+
+    document.getElementById("playlist_name").textContent = playlist.title;
 }
 
 function togglePlaylistContainer() {
@@ -325,7 +387,7 @@ function togglePlaylistContainer() {
     } else {
         playlistContainer.classList.add("hiddenPlaylistContainer");
         togglePlaylistContainerButton.classList.add("showPlaylistContainer");
-        togglePlaylistContainerButton.textContent = "Show";
+        togglePlaylistContainerButton.textContent = "Show Playlist";
     }
 }
 
@@ -336,35 +398,81 @@ function savePlaylist() {
 
 async function init() {
     const saved_playlist = JSON.parse(localStorage.getItem('playlist'));
-    if (saved_playlist && saved_playlist.videos.length>0) {
+    if (saved_playlist && saved_playlist.videos.length>0 && !getLocalBoolean('forceLoad')) {
         console.log("Loaded saved playlist!");
         playlist = saved_playlist;
     } else {
-        console.log("Saved Playlist: "+saved_playlist);
-        playlist = await getPlaylistData(temp_playlistAddress);
+        //console.log("Saved Playlist: "+saved_playlist);
+        playlist = await fetchPlaylistData(temp_playlistAddress);
         savePlaylist();
     }
     showPlaylist();
+
+    // for (let domain of BACKEND_MIRRORS) {
+    //     fetch(`https://${domain}/api/v1/stats`)
+    //     .then((response) => {return response.json();})
+    //     .then((data) => {console.log(domain,data);});
+    // }
+
+    videoPlayer.addEventListener('play', () => {
+        if (backgroundPlaybackStatus) {
+            backgroundPlaybackStatus = false;
+        } {
+            if (!audioPlayer) {return;}
+            audioPlayer.play().then(() => updateMediaSession(currentVideo));
+        }
+    });
+    videoPlayer.addEventListener('pause', () => {
+        if (document.hidden) {
+            backgroundPlaybackStatus = true;
+        } else {
+            audioPlayer.pause()
+            updateMediaSession(currentVideo);
+        }
+    });
+
+    videoPlayer.addEventListener('seeking', () => {
+        audioPlayer.currentTime = videoPlayer.currentTime;
+        updateMediaSession(currentVideo);
+    });
+    videoPlayer.addEventListener('seeked', () => {
+        audioPlayer.currentTime = videoPlayer.currentTime;
+        updateMediaSession(currentVideo);
+    });
+
+    videoPlayer.addEventListener('volumechange', () => {
+        audioPlayer.volume = videoPlayer.volume;
+        audioPlayer.muted = videoPlayer.muted;
+    });
+    videoPlayer.addEventListener('ratechange', () => {
+        audioPlayer.playbackRate = videoPlayer.playbackRate;
+    });
+
+    videoPlayer.addEventListener('ended', () => {
+        track(1);
+    })
 }
 
 // Settings
-$("#s_useThumbnail").prop("checked", localStorage.getItem('s_useThumbnail')=='true');
-
-// Running
-
-$("#s_useThumbnail").change(function(){
-    if ($(this).is(':checked')) {
-        localStorage.setItem('s_useThumbnail', 'true');
-    } else {
-        localStorage.setItem('s_useThumbnail', 'false');
+function initBoolSettings() {
+    const settings = [
+        "useThumbnail",
+        "forceLoad",
+        "forceSave"
+    ]
+    for (let setting of settings) {
+        $(`#s_${setting}`).prop("checked", getLocalBoolean(setting));
+        $(`#s_${setting}`).change(function(){
+            if ($(this).is(':checked')) {
+                localStorage.setItem(`s_${setting}`, 'true');
+            } else {
+                localStorage.setItem(`s_${setting}`, 'false');
+            }
+        });
     }
-})
-$("#s_forceLoad").change(function(){
-    if ($(this).is(':checked')) {
-        localStorage.setItem('s_forceLoad', 'true');
-    } else {
-        localStorage.setItem('s_forceLoad', 'false');
-    }
-})
-
+}
+// Init
+initBoolSettings();
 init();
+
+// Run anything else here

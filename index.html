@@ -14,18 +14,24 @@
         <p>Settings</p>
         <p><input id="s_useThumbnail" type="checkbox">Use Thumbnail for Video</p>
         <p><input id="s_forceLoad" type="checkbox">Force Load</p>
+        <p><input id="s_forceSave" type="checkbox">Force Save (With Force Load)</p>
     </div>
     <div class="box">
         <div id="absolute">
             <video id="video" controls playsinline hidden></video>
             <img id="thumbnail" src="" alt="">
+            <div id="video_details">
+                <h1 id="video_name">VIDEO NAME!</h1>
+                <p id="video_author">VIDEO AUTHOR!</p>
+            </div>
         </div>
         <div id="playlistContainer" class="defaultPlaylistContainer">
             <div id="playlistControls">
-                <button id="togglePlaylistContainer" onclick="togglePlaylistContainer()">Hide</button>
+                <h1 id="playlist_name">PLAYLIST NAME!</h1>
+                <button id="togglePlaylistContainer" class="hidePlaylistContainer" onclick="togglePlaylistContainer()">Hide</button>
             </div>
+            <div id="playlist"></div>
         </div>
-        <p id="track-name">TRACK NAME!</p>
     </div>
     <script src="index.js"></script>
 </body>

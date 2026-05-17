@@ -2,37 +2,43 @@ body {
     margin: 0;
     background-color: lightgray;
 }
+h1 {
+    color: white;
+}
 button {
     border: none;
     border-radius: 5px;
+    z-index: 2;
 }
 .box {
     display: flex;
-    z-index: 1;   
 }
-.box > * {
+#top > * {
+    position: relative;
+}
+#playlistContainer, #playlistContainer > * {
     z-index: 1;
 }
-#absolute > * {
-    position: absolute;
-}
 #playlistContainer {
-    display: flex;
-    flex-direction: column;
-    background: #444444;
-    flex-wrap: nowrap;
     width: 20vw;
     height: 90vh;
-    border-radius: 10px;
+    background: #444444;
 
-    position: relative;
+    position: absolute;
     margin-right: 5px;
-
-    overflow-x: hidden;
-    overflow-y: scroll;
+    border-radius: 10px;
 
     transition: left 0.7s;
     transition-timing-function: ease;
+}
+#playlist {
+    display: flex;
+    height: 90vh;
+    flex-direction: column;
+    flex-wrap: nowrap;
+
+    overflow-x: hidden;
+    overflow-y: scroll;
 }
 .defaultPlaylistContainer {
     left: 5px;
@@ -42,18 +48,49 @@ button {
     left: -22vw;
 }
 
-#playlistContainer::-webkit-scrollbar {
+#playlist::-webkit-scrollbar {
     background: #444444;
     border-radius: 10px;
 }
-#playlistContainer::-webkit-scrollbar-track {
+#playlist::-webkit-scrollbar-track {
     background: #444444;
     border-radius: 10px;
 }
-#playlistContainer::-webkit-scrollbar-thumb {
+#playlist::-webkit-scrollbar-thumb {
   background: #888;
   border-radius: 0 5px 5px 0;
   border-left: 1px solid #444444; /* adds space around thumb */
+}
+
+#playlistControls {
+    position: sticky;
+    overflow: visible;
+
+    display: flex;
+    align-items: center;
+}
+#playlistControls, #playlistControls > * {
+    z-index: 3;
+    margin: 5px;
+}
+#playlist_name {
+    font-size: 1vw;
+    color: white;
+}
+#togglePlaylistContainer { /* This is a button btw */
+    transition: left 0.7s;
+    transition-timing-function: ease;
+}
+#togglePlaylistContainer:hover {
+    background: lightgray;
+}
+.hidePlaylistContainer {
+    position: relative;
+    left: 0;
+}
+.showPlaylistContainer {
+    position: fixed;
+    left: 5px;
 }
 
 .video {
@@ -87,6 +124,7 @@ button {
     font-size: 12px;
 }
 #video {
+    position: relative;
     top: 0px;
     width: 100vw;
     z-index: 0;
@@ -95,21 +133,13 @@ button {
     width: 100vw;
     z-index: -2;
 }
-#playlistControls {
-    width: 95%;
-    margin: 5px;
-    position: sticky;
-    top: 5px;
+#video_name {
+    margin-left: 15px;
 }
-#togglePlaylistContainer { /* This is a button btw */
-    padding: 5px;
-}
-#togglePlaylistContainer:hover {
-    background: lightgray;
-}
-.showPlaylistContainer {
-    position: fixed;
-    left: 10px;
+#video_author {
+    margin-left: 15px;
+    font-size: 10px;
+    color: lightgray;
 }
 @media (max-width: 600px) {
     #playlistContainer {
@@ -118,13 +148,13 @@ button {
     .hiddenPlaylistContainer {
         left: -100vw;
     }
-    #absolute > * {
+    #top > * {
         position: relative;
     }
     .box {
         flex-direction: column;
     }
-    #absolute {
+    #top {
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -138,12 +168,12 @@ button {
 }
 #settings {
     position: absolute;
-    top: 1vw; right: 1vw;
-    width: 6vw; height: 6vw;
-    font-size: 3vw;
+    top: 5px; right: 5px;
+    width: 25px; height: 25px;
+    font-size: 15px;
 
     border: none;
-    border-radius: 1vw;
+    border-radius: 5px;
     justify-content: center;
     align-items: center;
 
@@ -154,11 +184,11 @@ button {
 }
 #s_settingsPanel {
     position: absolute;
-    top: 8vw; right: 1vw;
+    top: 35px; right: 5px;
 
     background-color: white;
-    border-radius: 1vw;
-    padding: 1vw;
+    border-radius: 5px;
+    padding: 5px;
     z-index: 2;
 }
 #s_settingsPanel > * {
