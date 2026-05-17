@@ -144,9 +144,14 @@ button {
 @media (max-width: 600px) {
     #playlistContainer {
         width: auto;
+        position: relative;
     }
     .hiddenPlaylistContainer {
         left: -100vw;
+    }
+    #video_details {
+        display: flex;
+        align-items: baseline;
     }
     #top > * {
         position: relative;
