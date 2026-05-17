@@ -17,7 +17,14 @@ const BACKEND_MIRRORS = [
 ];
 const NOCORS_BACKEND_MIRRORS = [
     "inv.thepixora.com"
-]
+];
+
+const CORS_PROXIES = [
+    "corsproxy.io"
+];
+function addCors_Proxy(cors_proxy, url) {
+    return `https://${cors_proxy}/?url=${encodeURIComponent(url)}`;
+}
 
 let temp_playlistAddress = "PLXPg0M1hQSff6jP8XGSDSsyf4lDdTfOXT";
 
@@ -70,10 +77,46 @@ async function getPlaylistData(playlistId) {
     }
 
     console.error("All public API instances failed.");
-    return [];
+    return null;
 }
 /** Get a video from a URL */
-async function getVideo(videoId, force, saveTo=null) {
+async function getVideoData(videoId) {
+    for (let domain of BACKEND_MIRRORS) {
+        const targetUrl = `https://${domain}/api/v1/videos/${videoId}`;
+        console.log("Fetching "+targetUrl);
+        const response = await fetch(targetUrl).catch((error) => {
+            console.warn(`Fetch Error on Domain ${domain}:`,error);
+            return null;
+        });
+        if (!response || !response.ok) {
+            if (response) {
+                console.warn(`Response not OK on Domain ${domain}:`,response);
+            }
+            continue;
+        }
+        return await response.json();
+    }
+    console.error("All public API instances failed.");
+    return null;
+}
+
+async function getProxiedVideoData(videoId) {
+    for (let proxy of CORS_PROXIES) {
+        for (let domain of BACKEND_MIRRORS) {
+            const targetUrl = addCors_Proxy(proxy, `${domain}/api/v1/videos/${videoId}`);
+            console.log(`gPVD: Fetching ${targetUrl}`);
+            const response = await fetch(targetUrl).catch((error) => {
+                return null;
+            });
+            if (response && response.ok) {
+                return await response.json();
+            }
+        }
+    }
+    return null;
+}
+
+async function loadVideoData(videoId, force, saveTo=null) {
     let saved_video;
     if (!force) {
         saved_video = JSON.parse(localStorage.getItem(videoId));
@@ -82,47 +125,42 @@ async function getVideo(videoId, force, saveTo=null) {
             return saved_video;
         }
     }
-    for (let domain of BACKEND_MIRRORS) {
-        const targetUrl = `https://${domain}/api/v1/videos/${videoId}`;
-
-        try {
-            console.log("Fetching "+targetUrl);
-            const response = await fetch(targetUrl);
-            if (!response.ok) {
-                console.warn(`${domain} Resp: `+response.status);
-                continue;
-            }
-            const data = await response.json();
-            const videoData = {
-                id: data.videoId,
-                title: data.title,
-                author: data.author,
-                thumbnails: data.videoThumbnails,
-                description: data.description,
-                published: data.published,
-                publishedText: data.publishedText,
-                authorThumbnails: data.authorThumbnails,
-                length: data.lengthSeconds,
-                adaptiveFormats: data.adaptiveFormats,
-                formatSteams: data.formatSteams,
-                musicTracks: data.musicTracks,
-            };
-            if (!force && !saved_video || saveTo) { // maybe () around !saved_video || saveTo
-                console.log("Saving Video...");
-                if (saveTo) {
-                    console.log("Overwriting saved video to alternative:",videoData.title);
-                    localStorage.setItem(saveTo, JSON.stringify(videoData));
-                } else {
-                    localStorage.setItem(videoId, JSON.stringify(videoData));
-                }
-            }
-            return videoData;
-        } catch (e) {
-            console.error("getVideo Error on ${domain}: "+e);
+    let videoData = await getVideoData(videoId);
+    if (!videoData) {
+        videoData = await getProxiedVideoData(videoId);
+        if (!videoData) {
+            console.error("All attempts to load Video Data failed.");
+            return null;
         }
     }
-    console.error("All public API instances failed.");
-    return [];
+
+    if ((!force && !saved_video) || saveTo) { // maybe () around !saved_video || saveTo
+        console.log("Saving Video...");
+        if (saveTo) {
+            console.log("Overwriting saved video to alternative:",videoData.title);
+            localStorage.setItem(saveTo, JSON.stringify(videoData));
+        } else {
+            localStorage.setItem(videoId, JSON.stringify(videoData));
+        }
+    }
+    return returnVideoData(videoData);
+}
+
+function returnVideoData(data) {
+    return {
+        id: data.videoId,
+        title: data.title,
+        author: data.author,
+        thumbnails: data.videoThumbnails,
+        description: data.description,
+        published: data.published,
+        publishedText: data.publishedText,
+        authorThumbnails: data.authorThumbnails,
+        length: data.lengthSeconds,
+        adaptiveFormats: data.adaptiveFormats,
+        formatSteams: data.formatStreams,
+        musicTracks: data.musicTracks
+    };
 }
 
 /**
@@ -166,7 +204,7 @@ async function searchSimilarVideo(videoData) {
 async function loadVideo(videoId, saveTo=null) {
     videoPlayer.url = '';
     videoPlayer.hidden = getLocalSetting('useThumbnail')=='true';
-    let videoData = await getVideo(videoId, localStorage.getItem('s_forceLoad')=='true', saveTo);
+    let videoData = await loadVideoData(videoId, localStorage.getItem('s_forceLoad')=='true', saveTo);
     if (!videoData) {return;}
     console.log("Got VideoData:",videoData);
 
@@ -281,11 +319,11 @@ function showPlaylist() {
 
 function togglePlaylistContainer() {
     if (togglePlaylistContainerButton.classList.contains("showPlaylistContainer")) {
-        playlistContainer.style.left = "5px";
+        playlistContainer.classList.remove("hiddenPlaylistContainer");
         togglePlaylistContainerButton.classList.remove("showPlaylistContainer");
         togglePlaylistContainerButton.textContent = "Hide";
     } else {
-        playlistContainer.style.left = "-22vw";
+        playlistContainer.classList.add("hiddenPlaylistContainer");
         togglePlaylistContainerButton.classList.add("showPlaylistContainer");
         togglePlaylistContainerButton.textContent = "Show";
     }

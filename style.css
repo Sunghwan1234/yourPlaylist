@@ -26,8 +26,6 @@ button {
     border-radius: 10px;
 
     position: relative;
-    left: 5px;
-    top: 5px;
     margin-right: 5px;
 
     overflow-x: hidden;
@@ -35,6 +33,13 @@ button {
 
     transition: left 0.7s;
     transition-timing-function: ease;
+}
+.defaultPlaylistContainer {
+    left: 5px;
+    top: 5px;
+}
+.hiddenPlaylistContainer {
+    left: -22vw;
 }
 
 #playlistContainer::-webkit-scrollbar {
@@ -109,6 +114,9 @@ button {
 @media (max-width: 600px) {
     #playlistContainer {
         width: auto;
+    }
+    .hiddenPlaylistContainer {
+        left: -100vw;
     }
     #absolute > * {
         position: relative;
