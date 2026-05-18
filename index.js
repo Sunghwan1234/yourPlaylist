@@ -35,6 +35,7 @@ let playlist; // PlaylistData
 let currentVideo; // VideoData
 let currentVideoIndex=0;
 let backgroundPlaybackStatus = false;
+let unsynced = false;
 
 function getLocalBoolean(setting) {
     return localStorage.getItem("s_"+setting)=='true';
@@ -227,54 +228,6 @@ async function searchSimilarVideo(videoData) {
 }
 
 /**
- * Loads a video into the videoplayer and audioplayer
- * @param {*} videoData 
- * @param {*} saveAsId ID to overwrite original
- * @returns {Boolean} Success or not
- */
-async function loadPlayer(videoData) {
-    videoPlayer.pause();
-    videoPlayer.url = '';
-    videoPlayer.hidden = getLocalBoolean('useThumbnail');
-    audioPlayer.currentTime = 0;
-    const audioUrl = videoData.adaptiveFormats[3].url;
-    audioPlayer.src = audioUrl;
-
-    if (getLocalBoolean('useThumbnail')) {
-        thumbnail.src = videoData.thumbnails[0].url;
-
-        audioPlayer.play().then(() => updateMediaSession(videoData));
-    } else {
-        const formats = { // Add 1 for webm
-            r144p: 4,
-            r240p: 6,
-            r360p: 8,
-            r480p: 10,
-            r720p: 12,
-            r1080p: 14
-        }
-        const videoUrl = videoData.adaptiveFormats[formats.r480p+1].url; // 480p
-        console.log("loadPlayer: Loading Video URL:",videoUrl);
-        videoPlayer.src = videoUrl;
-        await videoPlayer.load();
-
-        const videoPlayed = await videoPlayer.play().catch((error) => {
-            videoPlayer.pause();
-            // Perhaps return a better error
-            console.error("videoPlayer Error;",error);
-            return "failed";
-        });
-        if (videoPlayed=="failed") {return false;}
-    }
-
-    document.getElementById("video_name").textContent = videoData.title;
-    document.getElementById("video_author").textContent = videoData.author;
-    document.body.style.background = "black";
-
-    console.log("Loading was successful!");
-    return true;
-}
-/**
  * 
  * @param {*} videoId 
  * @param {*} forceLoad 
@@ -320,10 +273,70 @@ async function loadVideo(videoId, forceLoad=getLocalBoolean('forceLoad'), saveAs
     return true;
 }
 
-async function loadIndex(videoIndex, forceLoad=getLocalBoolean('forceLoad'), saveAsId=null) {
+async function loadVideoIndex(videoIndex, forceLoad=getLocalBoolean('forceLoad'), saveAsId=null) {
     const videoId = playlist.videos[videoIndex].id;
-    await loadVideo(videoI, forceLoad, saveAsId);
     currentVideoIndex = videoIndex;
+    return await loadVideo(videoId, forceLoad, saveAsId);
+}
+
+/**
+ * Loads a video into the videoplayer and audioplayer
+ * @param {*} videoData 
+ * @param {*} saveAsId ID to overwrite original
+ * @returns {Boolean} Success or not
+ */
+async function loadPlayer(videoData) {
+    videoPlayer.pause();
+    videoPlayer.hidden = getLocalBoolean('useThumbnail');
+    audioPlayer.currentTime = 0;
+    const audioUrl = videoData.adaptiveFormats[3].url;
+    audioPlayer.src = audioUrl;
+
+    await loadVideoPlayer(videoData);
+    if (getLocalBoolean('useThumbnail') || document.hidden) {
+        audioPlayer.play().then(() => updateMediaSession(videoData));
+
+        if (document.hidden) {
+            videoPlayer.src = '';
+            console.warn("Started playing audio while hidden!");
+            return true;
+        }
+    } else {
+        const videoPlayed = await playVideoPlayer();
+        if (!videoPlayed) {return false;}
+    }
+
+    document.body.style.background = "black";
+
+    console.log("Loading was successful!");
+    return true;
+}
+
+async function loadVideoPlayer(videoData) {
+    document.getElementById("video_name").textContent = videoData.title;
+    document.getElementById("video_author").textContent = videoData.author;
+
+    if (getLocalBoolean('useThumbnail')) {
+        thumbnail.src = videoData.thumbnails[0].url;
+    } else {
+        const formats = { // +1 for webm
+            r144p: 4, r240p: 6, r360p: 8, r480p: 10,
+            r720p: 12, r1080p: 14
+        }
+        const videoUrl = videoData.adaptiveFormats[formats.r480p+1].url; // 480p
+        console.log("loadVideoPlayer: Loading Video URL:",videoUrl);
+        videoPlayer.src = videoUrl;
+        await videoPlayer.load();
+    }
+}
+async function playVideoPlayer() {
+    const videoPlayed = await videoPlayer.play().catch((error) => {
+        videoPlayer.pause();
+        // Perhaps return a better error
+        console.error("videoPlayer Error;",error);
+        return "failed";
+    });
+    return videoPlayed!=="failed";
 }
 
 function updateMediaSession(videoData) {
@@ -343,13 +356,10 @@ function updateMediaSession(videoData) {
         navigator.mediaSession.setActionHandler('previoustrack', () => track(-1));
     }
 }
-function track(offset) {
-
+async function track(offset) {
+    return await loadVideoIndex(currentVideoIndex+offset);
 }
-
-function showSettings() {
-    settingsPanel.hidden = !settingsPanel.hidden;
-}
+// UI
 function showPlaylist() {
     const videoData = playlist.videos;
     console.log("Playlist Videos returned:",playlist);
@@ -373,12 +383,12 @@ function showPlaylist() {
         const videoItem = event.target.closest('.video');
         if (!videoItem) {return;}
         const videoId = videoItem.id;
-        loadVideo(videoId, getLocalBoolean('forceLoad'), getLocalBoolean("forceSave")?videoId:null);
+        const videoIndex = playlist.videos.findIndex(video => video.id==videoId);
+        loadVideoIndex(videoIndex, getLocalBoolean('forceLoad'), getLocalBoolean("forceSave")?videoId:null);
     });
 
     document.getElementById("playlist_name").textContent = playlist.title;
 }
-
 function togglePlaylistContainer() {
     if (togglePlaylistContainerButton.classList.contains("showPlaylistContainer")) {
         playlistContainer.classList.remove("hiddenPlaylistContainer");
@@ -413,18 +423,28 @@ async function init() {
     //     .then((response) => {return response.json();})
     //     .then((data) => {console.log(domain,data);});
     // }
+}
 
+async function initVideoEventListeners() {
     videoPlayer.addEventListener('play', () => {
         if (backgroundPlaybackStatus) {
+            setTimeout(() => {
             backgroundPlaybackStatus = false;
+            },100);
         } {
             if (!audioPlayer) {return;}
-            audioPlayer.play().then(() => updateMediaSession(currentVideo));
+            if (audioPlayer.paused) {
+                videoPlayer.currentTime = audioPlayer.currentTime;
+                audioPlayer.play().then(() => updateMediaSession(currentVideo));
+            }
         }
     });
     videoPlayer.addEventListener('pause', () => {
         if (document.hidden) {
             backgroundPlaybackStatus = true;
+            // if (!audioPlayer.paused) {
+            //     audioPlayer.play().catch(() => {}); 
+            // }
         } else {
             audioPlayer.pause()
             updateMediaSession(currentVideo);
@@ -432,12 +452,16 @@ async function init() {
     });
 
     videoPlayer.addEventListener('seeking', () => {
-        audioPlayer.currentTime = videoPlayer.currentTime;
-        updateMediaSession(currentVideo);
+        if (!backgroundPlaybackStatus) {
+            audioPlayer.currentTime = videoPlayer.currentTime;
+            updateMediaSession(currentVideo);
+        }
     });
     videoPlayer.addEventListener('seeked', () => {
-        audioPlayer.currentTime = videoPlayer.currentTime;
-        updateMediaSession(currentVideo);
+        if (!backgroundPlaybackStatus) {
+            audioPlayer.currentTime = videoPlayer.currentTime;
+            updateMediaSession(currentVideo);
+        }
     });
 
     videoPlayer.addEventListener('volumechange', () => {
@@ -448,9 +472,33 @@ async function init() {
         audioPlayer.playbackRate = videoPlayer.playbackRate;
     });
 
-    videoPlayer.addEventListener('ended', () => {
+    audioPlayer.addEventListener('ended', () => {
+        videoPlayer.pause();
+        if (document.hidden) {
+            unsynced = true;
+        }
         track(1);
-    })
+    });
+    document.addEventListener('visibilitychange', async () => {
+        if (document.visibilityState === 'visible') {
+            if (unsynced) { // video did not load in background?
+                if (currentVideo) {
+                    await loadVideoPlayer(currentVideo);
+
+                    videoPlayer.addEventListener('loadedmetadata', function syncOnLoad() {
+                        videoPlayer.currentTime = audioPlayer.currentTime;
+                        if (!audioPlayer.paused) {
+                            playVideoPlayer();
+                        }
+                        videoPlayer.removeEventListener('loadedmetadata', syncOnLoad);
+                    });
+                }
+                unsynced = false;
+            } else if (!audioPlayer.paused) { // Video is loaded
+                videoPlayer.currentTime = audioPlayer.currentTime;
+            }
+        }
+    });
 }
 
 // Settings
@@ -471,8 +519,10 @@ function initBoolSettings() {
         });
     }
 }
+
+function toggleSettingsPanel() {settingsPanel.hidden = !settingsPanel.hidden;}
 // Init
 initBoolSettings();
 init();
-
+initVideoEventListeners();
 // Run anything else here
