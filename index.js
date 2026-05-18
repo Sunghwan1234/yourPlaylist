@@ -90,7 +90,7 @@ async function fetchPlaylistData(playlistId) {
         return playlistData;
     }
 
-    console.error("All public API instances failed.");
+    console.error("All Invidious API instances failed.");
     return null;
 }
 /** Get a video from a URL */
@@ -102,12 +102,17 @@ async function fetchVideo(videoId) {
         if (!data) {continue;}
         return data;
     }
-    console.warn("Trying Piped API...");
-    for (let domain of PIPED_INSTANCES) {
-        
-    }
-    console.error("All public API instances failed.");
+    console.error("All Invidious API instances failed.");
     return null;
+}
+async function fetchPipedVideo(videoId) {
+    for (let domain of PIPED_INSTANCES) {
+        const targetUrl = `https://${domain}/streams/${videoId}`;
+        console.log("Fetching",targetUrl);
+        const data = await fetchWithCatch(targetUrl);
+        if (!data) {continue;}
+        return data;
+    }
 }
 
 async function fetchProxiedVideo(videoId) {
@@ -146,6 +151,7 @@ async function loadVideoData(videoId, forceLoad, forceSaveAsId=null) {
     }
     let video = await fetchVideo(videoId);
     if (!video) {
+        console.log("Trying Piped Videos...")
         video = await fetchProxiedVideo(videoId);
         if (!video) {
             console.error("All attempts to load Video Data failed.");
@@ -166,22 +172,49 @@ async function loadVideoData(videoId, forceLoad, forceSaveAsId=null) {
     }
     return videoData;
 }
-/** Parses a Video Object into readable data. */
-function parseVideoData(data) {
-    return {
-        id: data.videoId,
-        title: data.title,
-        author: data.author,
-        description: data.description,
-        published: data.published,
-        publishedText: data.publishedText,
-        thumbnails: data.videoThumbnails,
-        authorThumbnails: data.authorThumbnails,
-        length: data.lengthSeconds,
-        adaptiveFormats: data.adaptiveFormats,
-        formatSteams: data.formatStreams,
-        musicTracks: data.musicTracks
-    };
+/**
+ * parses Video Data into one format.
+ * https://docs.invidious.io/api/
+ * https://docs.piped.video/docs/api-documentation/
+ * @param {*} data 
+ * @param {*} pipeline "invidious" or "piped"
+ * @returns singular object
+ */
+function parseVideoData(data, pipeline="invidious", videoId) {
+    if (pipeline == "invidious") {
+        const videoStreams = data.adaptieFormats.map((video) => {
+            
+        });
+        return {
+            id: data.videoId,
+            title: data.title,
+            author: data.author,
+            description: data.description,
+            published: data.published,
+            publishedText: data.publishedText,
+            thumbnails: data.videoThumbnails,
+            authorThumbnails: data.authorThumbnails,
+            length: data.lengthSeconds,
+            adaptiveFormats: data.adaptiveFormats,
+            formatSteams: data.formatStreams,
+            musicTracks: data.musicTracks
+        };
+    } else if (pipeline == "piped") {
+        return {
+            id: videoId,
+            title: data.title,
+            author: data.uploader,
+            description: data.description,
+            published: null,
+            publishedText: data.uploadDate,
+            thumbnailUrl: data.thumbnailUrl,
+            authorThumbnails: null,
+            length: data.duration,
+            adaptieFormats: data.videoStreams,
+            formatStreams: null,
+            audioStreams: data.audioStreams,
+        }
+    }
 }
 
 /**
