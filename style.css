@@ -21,7 +21,6 @@ button {
 }
 #playlistContainer {
     width: 20vw;
-    height: 90vh;
     background: #444444;
 
     position: absolute;
@@ -33,7 +32,7 @@ button {
 }
 #playlist {
     display: flex;
-    height: 90vh;
+    height: 88vh;
     flex-direction: column;
     flex-wrap: nowrap;
 
@@ -74,7 +73,7 @@ button {
     margin: 5px;
 }
 #playlist_name {
-    font-size: 1vw;
+    font-size: 1.5vw;
     color: white;
 }
 #togglePlaylistContainer { /* This is a button btw */
@@ -143,15 +142,25 @@ button {
 }
 @media (max-width: 600px) {
     #playlistContainer {
-        width: auto;
+        width: auto; height: auto;
         position: relative;
     }
     .hiddenPlaylistContainer {
         left: -100vw;
     }
+    #playlist_name {
+        font-size: 20px;
+    }
+    #playlist {
+        height: 60vh;
+    }
     #video_details {
         display: flex;
         align-items: baseline;
+        flex-wrap: wrap;
+    }
+    #video_name {
+        margin: 10px;
     }
     #top > * {
         position: relative;

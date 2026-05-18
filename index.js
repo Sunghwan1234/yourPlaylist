@@ -425,51 +425,51 @@ async function init() {
     // }
 }
 
+let isSeeking = false;
+
 async function initVideoEventListeners() {
     videoPlayer.addEventListener('play', () => {
+        console.log("play");
         if (backgroundPlaybackStatus) {
             setTimeout(() => {
             backgroundPlaybackStatus = false;
             },100);
-        } {
-            if (!audioPlayer) {return;}
+        } else {
             if (audioPlayer.paused) {
                 videoPlayer.currentTime = audioPlayer.currentTime;
-                audioPlayer.play().then(() => updateMediaSession(currentVideo));
+                audioPlayer.play().then(()=>{updateMediaSession(currentVideo)});
+                audioPlayer.muted = false;
             }
         }
     });
     videoPlayer.addEventListener('pause', () => {
+        console.log("pause");
         if (document.hidden) {
             backgroundPlaybackStatus = true;
-            // if (!audioPlayer.paused) {
-            //     audioPlayer.play().catch(() => {}); 
-            // }
         } else {
             audioPlayer.pause()
             updateMediaSession(currentVideo);
+            
+            audioPlayer.muted = true;
         }
     });
 
     videoPlayer.addEventListener('seeking', () => {
+        console.log("seek");
         if (!backgroundPlaybackStatus) {
+            isSeeking = true;
+
             audioPlayer.currentTime = videoPlayer.currentTime;
             updateMediaSession(currentVideo);
         }
     });
     videoPlayer.addEventListener('seeked', () => {
+        console.log("seeked");
         if (!backgroundPlaybackStatus) {
-            audioPlayer.currentTime = videoPlayer.currentTime;
             updateMediaSession(currentVideo);
+            audioPlayer.muted = false;
+            setTimeout(()=>{isSeeking=false;}, 10);
         }
-    });
-
-    videoPlayer.addEventListener('volumechange', () => {
-        audioPlayer.volume = videoPlayer.volume;
-        audioPlayer.muted = videoPlayer.muted;
-    });
-    videoPlayer.addEventListener('ratechange', () => {
-        audioPlayer.playbackRate = videoPlayer.playbackRate;
     });
 
     audioPlayer.addEventListener('ended', () => {
@@ -484,10 +484,12 @@ async function initVideoEventListeners() {
             if (unsynced) { // video did not load in background?
                 if (currentVideo) {
                     await loadVideoPlayer(currentVideo);
+                    audioPlayer.muted = true;
 
                     videoPlayer.addEventListener('loadedmetadata', function syncOnLoad() {
                         videoPlayer.currentTime = audioPlayer.currentTime;
                         if (!audioPlayer.paused) {
+                            audioPlayer.muted = false;
                             playVideoPlayer();
                         }
                         videoPlayer.removeEventListener('loadedmetadata', syncOnLoad);
