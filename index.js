@@ -10,21 +10,27 @@ const thumbnail = document.getElementById("thumbnail");
 
 const settingsPanel = document.getElementById("s_settingsPanel");
 
-const BACKEND_MIRRORS = [
+const INVIDIOUS_INSTANCES = [
     "inv.nadeko.net",
     "yt.chocolatemoo53.com",
     "invidious.nerdvpn.de", // Does Not Work
     "yewtu.be",
     "inv.thepixora.com",
 ];
-const NOCORS_BACKEND_MIRRORS = [
+const API_INVIDIOUS_INSTANCES = [
     "inv.thepixora.com"
 ];
-
+const PIPED_INSTANCES = [
+    "piped.video",
+    "pipedapi.kavin.rocks",
+    "api.piped.private.coffee",
+    "pipedapi.orangenet.cc",
+]
 const CORS_PROXIES = [
     "corsproxy.io/?url=",
-    "proxy.corsfix.com/?",
+    // "proxy.corsfix.com/?", // does not work
 ];
+let available_instances;
 function addCors_Proxy(cors_proxy, url) {
     return `https://${cors_proxy}${url}`;
 }
@@ -46,19 +52,18 @@ async function fetchWithCatch(targetUrl, Error="") {
         return null;
     });
     if (response && response.ok) {
-        return response;
+        return await response.json();
     }
 }
 
 /** Get the Playlist */
 async function fetchPlaylistData(playlistId) {
-    for (let domain of BACKEND_MIRRORS) {
+    for (let domain of INVIDIOUS_INSTANCES) {
         const targetUrl = `https://${domain}/api/v1/playlists/${playlistId}`;
         console.log(`Polling server path: ${targetUrl}`);
 
-        const response = await fetchWithCatch(targetUrl);
-        if (!response) {continue;}
-        const data = await response.json();
+        const data = await fetchWithCatch(targetUrl);
+        if (!data) {continue;}
         if (!data.videos || !Array.isArray(data.videos)) {
             console.warn(`${domain} returned data, but 'videos' array was missing.`);
             continue;
@@ -90,20 +95,16 @@ async function fetchPlaylistData(playlistId) {
 }
 /** Get a video from a URL */
 async function fetchVideo(videoId) {
-    for (let domain of NOCORS_BACKEND_MIRRORS) {
+    for (let domain of API_INVIDIOUS_INSTANCES) {
         const targetUrl = `https://${domain}/api/v1/videos/${videoId}`;
         console.log("Fetching "+targetUrl);
-        const response = await fetch(targetUrl).catch((error) => {
-            console.warn(`Fetch Error on Domain ${domain}:`,error);
-            return null;
-        });
-        if (!response || !response.ok) {
-            if (response) {
-                console.warn(`Response not OK on Domain ${domain}:`,response);
-            }
-            continue;
-        }
-        return await response.json();
+        const data = await fetchWithCatch(targetUrl);
+        if (!data) {continue;}
+        return data;
+    }
+    console.warn("Trying Piped API...");
+    for (let domain of PIPED_INSTANCES) {
+        
     }
     console.error("All public API instances failed.");
     return null;
@@ -111,7 +112,7 @@ async function fetchVideo(videoId) {
 
 async function fetchProxiedVideo(videoId) {
     for (let proxy of CORS_PROXIES) {
-        for (let domain of BACKEND_MIRRORS) {
+        for (let domain of INVIDIOUS_INSTANCES) {
             console.log(`gPVD: URL: https://${domain}/api/v1/videos/${videoId}`)
             const targetUrl = addCors_Proxy(proxy, `https://${domain}/api/v1/videos/${videoId}`);
             console.log(`gPVD: Fetching ${targetUrl}`);
@@ -189,7 +190,7 @@ function parseVideoData(data) {
  * @returns video ID of the most similar video
  */
 async function searchSimilarVideo(videoData) {
-    for (let domain of BACKEND_MIRRORS) {
+    for (let domain of INVIDIOUS_INSTANCES) {
         const targetUrl = `https://${domain}/api/v1/search?`+
         `q=${encodeURIComponent(`${videoData.title} ${videoData.author}`)}`+
         `&type=video`;
@@ -417,12 +418,14 @@ async function init() {
         savePlaylist();
     }
     showPlaylist();
+}
 
-    // for (let domain of BACKEND_MIRRORS) {
-    //     fetch(`https://${domain}/api/v1/stats`)
-    //     .then((response) => {return response.json();})
-    //     .then((data) => {console.log(domain,data);});
-    // }
+function checkAllInstances() {
+    for (let domain of BACKEND_MIRRORS) {
+        fetch(`https://${domain}/api/v1/stats`)
+        .then((response) => {return response.json();})
+        .then((data) => {console.log(domain,data);});
+    }
 }
 
 let isSeeking = false;
