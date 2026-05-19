@@ -182,8 +182,17 @@ async function loadVideoData(videoId, forceLoad, forceSaveAsId=null) {
  */
 function parseVideoData(data, pipeline="invidious", videoId) {
     if (pipeline == "invidious") {
-        const videoStreams = data.adaptieFormats.map((video) => {
-            
+        const videoStreams = [];
+        const audioStreams = [];
+        data.adaptiveFormats.forEach(stream => {
+            if (stream.mimeType.includes('video')) {
+                videoStreams.push({
+                    index: stream.index,
+                    bitrate: stream.bitrate,
+                    url: stream.url
+                    // TODO: HERE
+                });
+            }
         });
         return {
             id: data.videoId,
@@ -197,7 +206,8 @@ function parseVideoData(data, pipeline="invidious", videoId) {
             length: data.lengthSeconds,
             adaptiveFormats: data.adaptiveFormats,
             formatSteams: data.formatStreams,
-            musicTracks: data.musicTracks
+            musicTracks: data.musicTracks,
+            pipeline: pipeline,
         };
     } else if (pipeline == "piped") {
         return {
@@ -210,9 +220,10 @@ function parseVideoData(data, pipeline="invidious", videoId) {
             thumbnailUrl: data.thumbnailUrl,
             authorThumbnails: null,
             length: data.duration,
-            adaptieFormats: data.videoStreams,
+            adaptiveFormats: data.videoStreams,
             formatStreams: null,
             audioStreams: data.audioStreams,
+            pipeline: pipeline,
         }
     }
 }
