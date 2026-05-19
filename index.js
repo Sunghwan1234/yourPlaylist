@@ -185,12 +185,39 @@ function parseVideoData(data, pipeline="invidious", videoId) {
         const videoStreams = [];
         const audioStreams = [];
         data.adaptiveFormats.forEach(stream => {
-            if (stream.mimeType.includes('video')) {
+            if (stream.type.includes('video')) {
+                const res = stream.resolution.split('x');
                 videoStreams.push({
                     index: stream.index,
                     bitrate: stream.bitrate,
-                    url: stream.url
-                    // TODO: HERE
+                    codec: stream.encoding,
+                    format: null,
+                    url: stream.url,
+                    mimeType: stream.type, // video/mp4 or audio/webm
+                    container: stream.container, // format: mp4, webm
+                    encoding: stream.encoding, // codec, compression method
+                    qualityLabel: stream.qualityLabel, // "720p"
+                    resolution: stream.resolution, //1920x1080
+                    width: res[0],
+                    height: res[1],
+                    fps: stream.fps,
+                    size: stream.size, // File Size
+                    duration: stream.targetDuractionSec,
+                });
+            } else {
+                audioStreams.push({
+                    index: stream.index,
+                    bitrate: stream.bitrate,
+                    codec: stream.encoding, // codex == encoding method
+                    format: null,
+                    url: stream.url,
+                    mimeType: stream.type,
+                    container: stream.container,
+                    encoding: stream.encoding,
+                    duration: stream.targetDurationSec,
+                    qualityType: stream.audioQuality, // "AUDIO_QUALITY_LOW"
+                    sampleRate: stream.audioSampleRate, // Samples of audio/sec
+                    channels: stream.audioChannels // 2 for stereo
                 });
             }
         });
@@ -204,12 +231,50 @@ function parseVideoData(data, pipeline="invidious", videoId) {
             thumbnails: data.videoThumbnails,
             authorThumbnails: data.authorThumbnails,
             length: data.lengthSeconds,
-            adaptiveFormats: data.adaptiveFormats,
+            videoStreams: videoStreams,
+            audioStreams: audioStreams,
             formatSteams: data.formatStreams,
             musicTracks: data.musicTracks,
             pipeline: pipeline,
         };
     } else if (pipeline == "piped") {
+        const videoStreams = [];
+        const audioStreams = [];
+        data.videoStreams.forEach(stream => {
+            videoStreams.push({
+                index: null, // TODO: fix this
+                bitrate: stream.bitrate,
+                codec: stream.codec,
+                format: stream.format,
+                url: stream.url,
+                mimeType: stream.mimeType, // video/mp4 or audio/webm
+                container: null, // format: mp4, webm
+                encoding: stream.codec, // codec, compression method
+                qualityLabel: stream.quality, // "720p"
+                resolution: stream.width+"x"+stream.height, //1920x1080
+                width: stream.width,
+                height: stream.height,
+                fps: stream.fps,
+                size: null, // File Size
+                duration: null,
+            });
+        });
+        data.audioStreams.forEach(stream => {
+            audioStreams.push({
+                index: stream.index,
+                bitrate: stream.bitrate,
+                codec: stream.encoding, // codex == encoding method
+                format: null,
+                url: stream.url,
+                mimeType: stream.type,
+                container: stream.container,
+                encoding: stream.encoding,
+                duration: stream.targetDuractionSec,
+                qualityType: stream.audioQuality, // "AUDIO_QUALITY_LOW"
+                sampleRate: stream.audioSampleRate, // Samples of audio/sec
+                channels: stream.audioChannels // 2 for stereo
+            });
+        });
         return {
             id: videoId,
             title: data.title,
@@ -220,7 +285,8 @@ function parseVideoData(data, pipeline="invidious", videoId) {
             thumbnailUrl: data.thumbnailUrl,
             authorThumbnails: null,
             length: data.duration,
-            adaptiveFormats: data.videoStreams,
+            videoStreams: videoStreams,
+            audioStreams: audioStreams,
             formatStreams: null,
             audioStreams: data.audioStreams,
             pipeline: pipeline,
@@ -334,7 +400,7 @@ async function loadPlayer(videoData) {
     videoPlayer.pause();
     videoPlayer.hidden = getLocalBoolean('useThumbnail');
     audioPlayer.currentTime = 0;
-    const audioUrl = videoData.adaptiveFormats[3].url;
+    const audioUrl = videoData.audioStreams[3].url; // TODO: TEST TS
     audioPlayer.src = audioUrl;
 
     await loadVideoPlayer(videoData);
@@ -364,11 +430,12 @@ async function loadVideoPlayer(videoData) {
     if (getLocalBoolean('useThumbnail')) {
         thumbnail.src = videoData.thumbnails[0].url;
     } else {
+        const resolutions = [];
         const formats = { // +1 for webm
-            r144p: 4, r240p: 6, r360p: 8, r480p: 10,
-            r720p: 12, r1080p: 14
-        }
-        const videoUrl = videoData.adaptiveFormats[formats.r480p+1].url; // 480p
+            r144p: 0, r240p: 2, r360p: 4, r480p: 8,
+            r720p: 10, r1080p: 12
+        }; // TODO: TEST TS
+        const videoUrl = videoData.videoStreams[formats.r480p+1].url; // 480p
         console.log("loadVideoPlayer: Loading Video URL:",videoUrl);
         videoPlayer.src = videoUrl;
         await videoPlayer.load();
