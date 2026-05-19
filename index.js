@@ -149,16 +149,19 @@ async function loadVideoData(videoId, forceLoad, forceSaveAsId=null) {
             return saved_video;
         }
     }
+    let pipeline = "invidious";
     let video = await fetchVideo(videoId);
     if (!video) {
-        console.log("Trying Piped Videos...")
-        video = await fetchProxiedVideo(videoId);
+        console.log("Trying Piped Videos...");
+        video = await fetchPipedVideo(videoId);
         if (!video) {
             console.error("All attempts to load Video Data failed.");
             return null;
         }
+        pipeline = "piped";
     }
-    const videoData = parseVideoData(video);
+    const videoData = parseVideoData(video,pipeline,videoId);
+    
     if ((!forceLoad && !saved_video) || forceSaveAsId) { // maybe () around !saved_video || saveTo
         console.log("Saving VideoData:",videoData);
         if (forceSaveAsId) {
@@ -176,8 +179,9 @@ async function loadVideoData(videoId, forceLoad, forceSaveAsId=null) {
  * parses Video Data into one format.
  * https://docs.invidious.io/api/
  * https://docs.piped.video/docs/api-documentation/
- * @param {*} data 
- * @param {*} pipeline "invidious" or "piped"
+ * @param {*} data unfiltered videoData
+ * @param {String} pipeline "invidious" or "piped"
+ * @param {String} videoId
  * @returns singular object
  */
 function parseVideoData(data, pipeline="invidious", videoId) {
@@ -292,6 +296,7 @@ function parseVideoData(data, pipeline="invidious", videoId) {
             pipeline: pipeline,
         }
     }
+    return null;
 }
 
 /**
@@ -369,6 +374,7 @@ async function loadVideo(videoId, forceLoad=getLocalBoolean('forceLoad'), saveAs
                     videoLoaded = await loadVideo(searchResult, true, videoId);
                     if (!videoLoaded) {
                         console.error(`loadVideo: All attempts to load ${videoData.title} failed.`);
+                        window.alert("All attempts at loading has failed.");
                         return;
                     }
                 } else {
