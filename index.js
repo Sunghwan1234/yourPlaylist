@@ -17,14 +17,16 @@ const INVIDIOUS_INSTANCES = [
     "yewtu.be",
     "inv.thepixora.com",
 ];
-const API_INVIDIOUS_INSTANCES = [
+const INVIDIOUS_API_INSTANCES = [
     "inv.thepixora.com"
 ];
-const PIPED_INSTANCES = [
-    "piped.video",
-    "pipedapi.kavin.rocks",
+const PIPED_API_INSTANCES = [
+    //"pipedapi.kavin.rocks",
     "api.piped.private.coffee",
-    "pipedapi.orangenet.cc",
+    "pipedapi.leptons.xyz",
+    "pipedapi.nosebs.ru",
+    "pipedapi-libre.kavin.rocks",
+    //"pipedapi.orangenet.cc",
 ]
 const CORS_PROXIES = [
     "corsproxy.io/?url=",
@@ -47,8 +49,10 @@ function getLocalBoolean(setting) {
     return localStorage.getItem("s_"+setting)=='true';
 }
 /** Awaits a fetch with response ok. You only need to check if it is null. */
-async function fetchWithCatch(targetUrl, Error="") {
-    const response = await fetch(targetUrl).catch((error) => {
+async function fetchWithCatch(targetUrl, signal=null) {
+    const response = await fetch(targetUrl, {
+        signal: signal
+    }).catch((error) => {
         return null;
     });
     if (response && response.ok) {
@@ -95,18 +99,30 @@ async function fetchPlaylistData(playlistId) {
 }
 /** Get a video from a URL */
 async function fetchVideo(videoId) {
-    for (let domain of API_INVIDIOUS_INSTANCES) {
+    for (let domain of INVIDIOUS_API_INSTANCES) {
         const targetUrl = `https://${domain}/api/v1/videos/${videoId}`;
         console.log("Fetching "+targetUrl);
-        const data = await fetchWithCatch(targetUrl);
-        if (!data) {continue;}
-        return data;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(()=>controller.abort(),10*1000);
+        try {
+            const data = await fetchWithCatch(targetUrl, controller.signal);
+            if (!data) {continue;}
+            return data;
+        } catch (error) {
+            if (error.name=='AbortError') {
+                console.warn("Timed out (10s)");
+                return null;
+            }
+            throw error;
+        } finally {
+            clearTimeout(timeoutId);
+        }
     }
     console.error("All Invidious API instances failed.");
     return null;
 }
 async function fetchPipedVideo(videoId) {
-    for (let domain of PIPED_INSTANCES) {
+    for (let domain of PIPED_API_INSTANCES) {
         const targetUrl = `https://${domain}/streams/${videoId}`;
         console.log("Fetching",targetUrl);
         const data = await fetchWithCatch(targetUrl);
@@ -121,11 +137,9 @@ async function fetchProxiedVideo(videoId) {
             console.log(`gPVD: URL: https://${domain}/api/v1/videos/${videoId}`)
             const targetUrl = addCors_Proxy(proxy, `https://${domain}/api/v1/videos/${videoId}`);
             console.log(`gPVD: Fetching ${targetUrl}`);
-            const response = await fetch(targetUrl).catch((error) => {
-                return null;
-            });
-            if (response && response.ok) {
-                return await response.json();
+            const data = await fetchWithCatch(targetUrl);
+            if (data) {
+                return data;
             }
         }
     }
