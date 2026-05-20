@@ -23,14 +23,21 @@ const INVIDIOUS_API_INSTANCES = [
 const PIPED_API_INSTANCES = [
     //"pipedapi.kavin.rocks",
     "api.piped.private.coffee",
-    "pipedapi.leptons.xyz",
-    "pipedapi.nosebs.ru",
-    "pipedapi-libre.kavin.rocks",
+    //"pipedapi.leptons.xyz",
+    //"pipedapi.nosebs.ru", NOT RESOLVED
+    //"pipedapi-libre.kavin.rocks", 502 BAD GATEWAY
     //"pipedapi.orangenet.cc",
 ]
+/**
+ * https://www.whateverorigin.org/
+ * https://allorigins.win/
+ * 
+ */
 const CORS_PROXIES = [
     "corsproxy.io/?url=",
     // "proxy.corsfix.com/?", // does not work
+    "api.allorgins.win/raw?url=",
+    "whateverorigin.org/get?url=",
 ];
 let available_instances;
 function addCors_Proxy(cors_proxy, url) {
