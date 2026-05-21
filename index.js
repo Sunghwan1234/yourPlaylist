@@ -11,10 +11,10 @@ const thumbnail = document.getElementById("thumbnail");
 const settingsPanel = document.getElementById("s_settingsPanel");
 
 const INVIDIOUS_INSTANCES = [
-    "inv.nadeko.net",
+    "inv.nadeko.net", // Endpoint Disabled
     "yt.chocolatemoo53.com",
-    "invidious.nerdvpn.de", // Does Not Work
-    "yewtu.be",
+    // "invidious.nerdvpn.de", // Auth required
+    // "yewtu.be", // Is a frontend
     "inv.thepixora.com",
 ];
 const INVIDIOUS_API_INSTANCES = [
@@ -26,7 +26,7 @@ const PIPED_API_INSTANCES = [
     "pipedapi.leptons.xyz", // CORS
     //"pipedapi.nosebs.ru", NOT RESOLVED
     //"pipedapi-libre.kavin.rocks", 502 BAD GATEWAY
-    "pipedapi.orangenet.cc", //CORS
+    "pipedapi.orangenet.cc", // CORS
 ]
 /**
  * https://www.whateverorigin.org/
@@ -34,9 +34,9 @@ const PIPED_API_INSTANCES = [
  * 
  */
 const CORS_PROXIES = [
-    "corsproxy.io/?url=",
-    // "proxy.corsfix.com/?", // does not work
-    "api.allorgins.win/raw?url=",
+    // "corsproxy.io/?url=",
+    //"proxy.corsfix.com/?", // Must signup
+    "api.allorigins.win/raw?url=",
     "whateverorigin.org/get?url=",
 ];
 let available_instances;
@@ -56,17 +56,32 @@ function getLocalBoolean(setting) {
     return localStorage.getItem("s_"+setting)=='true';
 }
 /** Awaits a fetch with response ok. You only need to check if it is null. */
-async function fetchWithCatch(targetUrl, signal=null) {
-    const response = await fetch(targetUrl, {
-        signal: signal
-    }).catch((error) => {
-        return null;
-    });
-    if (response && response.ok) {
-        return await response.json();
+async function fetchWithCatch(targetUrl) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(()=>controller.abort(),5*1000);
+    try {
+        const response = await fetch(targetUrl, {
+            signal: controller.signal
+        }).catch(() => null);
+        if (response && response.ok) {
+            const raw = await response.text();
+            try {
+                return JSON.parse(raw);
+            } catch (parseError) {
+                console.warn(`URL ${targetUrl} did not return valid:`,raw);
+                return null;
+            }
+        }
+    } catch (error) {
+        if (error.name=='AbortError') {
+            console.warn("Timed out (5s)");
+            return null;
+        }
+        throw error;
+    } finally {
+        clearTimeout(timeoutId);
     }
 }
-
 /** Get the Playlist */
 async function fetchPlaylistData(playlistId) {
     for (let domain of INVIDIOUS_INSTANCES) {
@@ -109,21 +124,9 @@ async function fetchVideo(videoId) {
     for (let domain of INVIDIOUS_API_INSTANCES) {
         const targetUrl = `https://${domain}/api/v1/videos/${videoId}`;
         console.log("Fetching "+targetUrl);
-        const controller = new AbortController();
-        const timeoutId = setTimeout(()=>controller.abort(),5*1000);
-        try {
-            const data = await fetchWithCatch(targetUrl, controller.signal);
-            if (!data) {continue;}
-            return data;
-        } catch (error) {
-            if (error.name=='AbortError') {
-                console.warn("Timed out (10s)");
-                return null;
-            }
-            throw error;
-        } finally {
-            clearTimeout(timeoutId);
-        }
+        const data = await fetchWithCatch(targetUrl, controller.signal);
+        if (!data) {continue;}
+        return data;
     }
     console.error("All Invidious API instances failed.");
     return null;
@@ -188,13 +191,16 @@ async function loadVideoData(videoId, forceLoad, forceSaveAsId=null) {
     let pipeline = "invidious";
     let video = null;//await fetchVideo(videoId);
     if (!video) {
+        pipeline = "piped";
         console.log("Trying Piped Videos...");
         video = await fetchPipedVideo(videoId);
         if (!video) {
+            pipeline = "invidious";
             console.log("Trying Proxies...");
             video = await fetchProxiedVideo(videoId);
             if (!video) {
-                console.log("Trying Piped...");
+                pipeline = "piped";
+                console.log("Trying Proxied Piped...");
                 video = await fetchProxiedPipedVideo(videoId);
                 if (!video){
                     console.error("All attempts to load Video Data failed.");
@@ -202,8 +208,8 @@ async function loadVideoData(videoId, forceLoad, forceSaveAsId=null) {
                 }
             }
         }
-        pipeline = "piped";
     }
+    console.log(`Successfully got data:`,video);
     const videoData = parseVideoData(video,pipeline,videoId);
     
     if ((!forceLoad && !saved_video) || forceSaveAsId) { // maybe () around !saved_video || saveTo
@@ -288,23 +294,24 @@ function parseVideoData(data, pipeline="invidious", videoId) {
     } else if (pipeline == "piped") {
         const videoStreams = [];
         const audioStreams = [];
-        data.videoStreams.forEach(stream => {
+        data.videoStreams.forEach((stream, index) => {
+            const containerType = stream.mimeType ? stream.mimeType.split('/')[1] : null;
             videoStreams.push({
-                index: null, // TODO: fix this
+                index: index, 
                 bitrate: stream.bitrate,
                 codec: stream.codec,
                 format: stream.format,
                 url: stream.url,
-                mimeType: stream.mimeType, // video/mp4 or audio/webm
-                container: null, // format: mp4, webm
-                encoding: stream.codec, // codec, compression method
-                qualityLabel: stream.quality, // "720p"
-                resolution: stream.width+"x"+stream.height, //1920x1080
+                mimeType: stream.mimeType, 
+                container: containerType, 
+                encoding: stream.codec, 
+                qualityLabel: stream.quality, 
+                resolution: stream.width && stream.height ? `${stream.width}x${stream.height}` : null, 
                 width: stream.width,
                 height: stream.height,
                 fps: stream.fps,
-                size: null, // File Size
-                duration: null,
+                size: null, // Requires content-length header or file data
+                duration: null, // Requires stream metadata
             });
         });
         data.audioStreams.forEach(stream => {
