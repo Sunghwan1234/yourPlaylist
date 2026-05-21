@@ -11,33 +11,38 @@ const thumbnail = document.getElementById("thumbnail");
 const settingsPanel = document.getElementById("s_settingsPanel");
 
 const INVIDIOUS_INSTANCES = [
-    "inv.nadeko.net", // Endpoint Disabled
-    "yt.chocolatemoo53.com",
+    //"inv.nadeko.net", // Endpoint Disabled
+    //"yt.chocolatemoo53.com",
     // "invidious.nerdvpn.de", // Auth required
     // "yewtu.be", // Is a frontend
-    "inv.thepixora.com",
+    //"inv.thepixora.com",
 ];
 const INVIDIOUS_API_INSTANCES = [
     "inv.thepixora.com"
 ];
 const PIPED_API_INSTANCES = [
-    "pipedapi.kavin.rocks", // CORS
-    "api.piped.private.coffee",
+    "pipedapi.kavin.rocks", // 526 CORS
+    "pipedapi.moomoo.me", // 502
+    "api-piped.mha.fi", // 522
+    "api.piped.private.coffee", // 500
     "pipedapi.leptons.xyz", // CORS
     //"pipedapi.nosebs.ru", NOT RESOLVED
-    //"pipedapi-libre.kavin.rocks", 502 BAD GATEWAY
-    "pipedapi.orangenet.cc", // CORS
+    "pipedapi-libre.kavin.rocks", // 502 BAD GATEWAY
+    //"pipedapi.orangenet.cc", // Frontend?
 ]
 /**
  * https://www.whateverorigin.org/
  * https://allorigins.win/
- * 
+ * https://cors.lol/#getStarted
+ * https://github.com/Eiledon/alloworigin
  */
 const CORS_PROXIES = [
     // "corsproxy.io/?url=",
     //"proxy.corsfix.com/?", // Must signup
-    "api.allorigins.win/raw?url=",
-    "whateverorigin.org/get?url=",
+    //"api.allorigins.win/raw?url=", // slow
+    //"whateverorigin.org/get?url=", // 20r/s 500
+    "api.cors.lol/?url=",
+    "alloworigin.com/get?url=",
 ];
 let available_instances;
 function addCors_Proxy(cors_proxy, url) {
@@ -58,7 +63,7 @@ function getLocalBoolean(setting) {
 /** Awaits a fetch with response ok. You only need to check if it is null. */
 async function fetchWithCatch(targetUrl) {
     const controller = new AbortController();
-    const timeoutId = setTimeout(()=>controller.abort(),5*1000);
+    const timeoutId = setTimeout(()=>controller.abort(),10*1000);
     try {
         const response = await fetch(targetUrl, {
             signal: controller.signal
@@ -145,9 +150,9 @@ async function fetchProxiedVideo(videoId) {
     for (let proxy of CORS_PROXIES) {
         for (let domain of INVIDIOUS_INSTANCES) {
             const domainUrl = `https://${domain}/api/v1/videos/${videoId}`;
-            console.log(`gPVD: URL: ${domainUrl}`)
+            console.log(`gPVD Proxy:`,proxy,"Domain",domainUrl);
             const targetUrl = addCors_Proxy(proxy, domainUrl);
-            console.log(`gPVD: Fetching ${targetUrl}`);
+            //console.log(`gPVD Fetching ${targetUrl}`);
             const data = await fetchWithCatch(targetUrl);
             if (data) {
                 return data;
@@ -160,9 +165,9 @@ async function fetchProxiedPipedVideo(videoId) {
     for (let proxy of CORS_PROXIES) {
         for (let domain of PIPED_API_INSTANCES) {
             const domainUrl = `https://${domain}/streams/${videoId}`;
-            console.log(`gPVD: URL: ${domainUrl}`)
+            console.log(`gPVD Proxy:`,proxy,"Domain",domainUrl);
             const targetUrl = addCors_Proxy(proxy, domainUrl);
-            console.log(`gPVD: Fetching ${targetUrl}`);
+            //console.log(`gPVD: Fetching ${targetUrl}`);
             const data = await fetchWithCatch(targetUrl);
             if (data) {
                 return data;
