@@ -21,12 +21,12 @@ const INVIDIOUS_API_INSTANCES = [
     "inv.thepixora.com"
 ];
 const PIPED_API_INSTANCES = [
-    //"pipedapi.kavin.rocks",
+    "pipedapi.kavin.rocks", // CORS
     "api.piped.private.coffee",
-    //"pipedapi.leptons.xyz",
+    "pipedapi.leptons.xyz", // CORS
     //"pipedapi.nosebs.ru", NOT RESOLVED
     //"pipedapi-libre.kavin.rocks", 502 BAD GATEWAY
-    //"pipedapi.orangenet.cc",
+    "pipedapi.orangenet.cc", //CORS
 ]
 /**
  * https://www.whateverorigin.org/
@@ -41,7 +41,7 @@ const CORS_PROXIES = [
 ];
 let available_instances;
 function addCors_Proxy(cors_proxy, url) {
-    return `https://${cors_proxy}${url}`;
+    return `https://${cors_proxy}${encodeURIComponent(url)}`;
 }
 
 let temp_playlistAddress = "PLXPg0M1hQSff6jP8XGSDSsyf4lDdTfOXT";
@@ -110,7 +110,7 @@ async function fetchVideo(videoId) {
         const targetUrl = `https://${domain}/api/v1/videos/${videoId}`;
         console.log("Fetching "+targetUrl);
         const controller = new AbortController();
-        const timeoutId = setTimeout(()=>controller.abort(),10*1000);
+        const timeoutId = setTimeout(()=>controller.abort(),5*1000);
         try {
             const data = await fetchWithCatch(targetUrl, controller.signal);
             if (!data) {continue;}
@@ -141,8 +141,9 @@ async function fetchPipedVideo(videoId) {
 async function fetchProxiedVideo(videoId) {
     for (let proxy of CORS_PROXIES) {
         for (let domain of INVIDIOUS_INSTANCES) {
-            console.log(`gPVD: URL: https://${domain}/api/v1/videos/${videoId}`)
-            const targetUrl = addCors_Proxy(proxy, `https://${domain}/api/v1/videos/${videoId}`);
+            const domainUrl = `https://${domain}/api/v1/videos/${videoId}`;
+            console.log(`gPVD: URL: ${domainUrl}`)
+            const targetUrl = addCors_Proxy(proxy, domainUrl);
             console.log(`gPVD: Fetching ${targetUrl}`);
             const data = await fetchWithCatch(targetUrl);
             if (data) {
@@ -151,6 +152,20 @@ async function fetchProxiedVideo(videoId) {
         }
     }
     return null;
+}
+async function fetchProxiedPipedVideo(videoId) {
+    for (let proxy of CORS_PROXIES) {
+        for (let domain of PIPED_API_INSTANCES) {
+            const domainUrl = `https://${domain}/streams/${videoId}`;
+            console.log(`gPVD: URL: ${domainUrl}`)
+            const targetUrl = addCors_Proxy(proxy, domainUrl);
+            console.log(`gPVD: Fetching ${targetUrl}`);
+            const data = await fetchWithCatch(targetUrl);
+            if (data) {
+                return data;
+            }
+        }
+    }
 }
 
 /**
@@ -171,13 +186,21 @@ async function loadVideoData(videoId, forceLoad, forceSaveAsId=null) {
         }
     }
     let pipeline = "invidious";
-    let video = await fetchVideo(videoId);
+    let video = null;//await fetchVideo(videoId);
     if (!video) {
         console.log("Trying Piped Videos...");
         video = await fetchPipedVideo(videoId);
         if (!video) {
-            console.error("All attempts to load Video Data failed.");
-            return null;
+            console.log("Trying Proxies...");
+            video = await fetchProxiedVideo(videoId);
+            if (!video) {
+                console.log("Trying Piped...");
+                video = await fetchProxiedPipedVideo(videoId);
+                if (!video){
+                    console.error("All attempts to load Video Data failed.");
+                    return null;
+                }
+            }
         }
         pipeline = "piped";
     }
