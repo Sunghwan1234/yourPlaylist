@@ -20,15 +20,16 @@ const INVIDIOUS_INSTANCES = [
 const INVIDIOUS_API_INSTANCES = [
     "inv.thepixora.com"
 ];
+/**
+ * Nothing is working btw
+ * https://github.com/TeamPiped/documentation/blob/main/content/docs/public-instances/index.md
+ */
 const PIPED_API_INSTANCES = [
-    "pipedapi.kavin.rocks", // 526 CORS
-    "pipedapi.moomoo.me", // 502
-    "api-piped.mha.fi", // 522
-    "api.piped.private.coffee", // 500
-    "pipedapi.leptons.xyz", // CORS
-    //"pipedapi.nosebs.ru", NOT RESOLVED
-    "pipedapi-libre.kavin.rocks", // 502 BAD GATEWAY
-    //"pipedapi.orangenet.cc", // Frontend?
+    //"pipedapi.kavin.rocks", // 526 CORS
+    //"api.piped.private.coffee", // 500
+    //"pipedapi.leptons.xyz", // 502 BAD GATEWAY CORS
+    //"pipedapi-libre.kavin.rocks", // 502 BAD GATEWAY
+    "pipedapi.orangenet.cc", // Frontend?
 ]
 /**
  * https://www.whateverorigin.org/
