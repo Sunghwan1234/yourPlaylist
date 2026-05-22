@@ -78,6 +78,11 @@ let currentVideoIndex=0;
 let backgroundPlaybackStatus = false;
 let unsynced = false;
 
+const settings = {
+    videoQuality: 720,
+    youtubeVideoContainer: 'webm'
+};
+
 // BEFORE INIT
 navigator.storage.persist();
 /**
@@ -158,15 +163,19 @@ async function fetchWithCatch(targetUrl, method={}) {
         method.signal = controller.signal;
         //console.log("Method",method);
         const response = await fetch(targetUrl, method).catch(() => null);
-        if (response && response.ok) {
-            return await response.json();
+        if (!response) {return null;}
+        const json = await response.json();
+        if (!response.ok) {
+            console.warn("Response not ok:",response.status, json);
         }
+        return json;
     } catch (error) {
         if (error.name=='AbortError') {
             console.warn("Timed out (10s)");
-            return null;
+        } else {
+            console.warn ("Unknown error:",error);
         }
-        throw error;
+        return null;
     } finally {
         clearTimeout(timeoutId);
     }
@@ -263,15 +272,17 @@ async function fetchProxiedPipedVideo(videoId) {
  */
 async function fetchCobaltVideo(videoId, proxy=null) {
     for (const domain of COBALT_INSTANCES) {
+        const body = {
+            url: `https://youtube.com/watch?v=${videoId}`,
+            //vQuality: settings.videoQuality,
+        };
         const data = await fetchWithCatch(domain, {
             method: 'POST',
             headers: {
                 'Accept': 'application/json',
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({
-                url: `https://youtube.com/watch?v=${videoId}`,
-            })
+            body: JSON.stringify(body)
         });
         if (!data || data.status === "error") {continue;}
         if (!data.url) {continue;}
@@ -279,6 +290,7 @@ async function fetchCobaltVideo(videoId, proxy=null) {
             console.warn("Domain",domain,"url is null");
             continue;
         }
+        console.log("fCobalt: Domain",domain,"Returned:",data);
         return data;
     }
 }
@@ -514,6 +526,10 @@ async function loadFullVideo(videoId, playlistVData, forceLoad, forceSaveAsId=nu
         }
     }
     const fullVideo = await loadVideoData(videoId, playlistVData);
+    if (!fullVideo) {
+        console.warn("LFV: LVD Failed.");
+        return null;
+    }
     console.log("LFV: Loaded full video:",fullVideo);
     
     if ((!forceLoad && !saved_videoData) || forceSaveAsId) { // maybe () around !saved_video || saveTo
@@ -713,22 +729,26 @@ function togglePlaylistContainer() {
     }
 }
 
-function savePlaylist() {
-    localStorage.setItem('playlist', JSON.stringify(playlist));
-    console.log("Saved Playlist!");
-}
-
 async function init() {
+    loadPlaylist();
+    showPlaylist();
+}
+async function loadPlaylist(playlistId=temp_playlistAddress, forceLoad=getLocalBoolean('forceLoad')) {
     const saved_playlist = JSON.parse(localStorage.getItem('playlist'));
-    if (saved_playlist && saved_playlist.videos.length>0 && !getLocalBoolean('forceLoad')) {
+    if (saved_playlist && saved_playlist.videos.length>0 && !forceLoad) {
         console.log("Loaded saved playlist!");
         playlist = saved_playlist;
     } else {
-        //console.log("Saved Playlist: "+saved_playlist);
-        playlist = await fetchPlaylistData(temp_playlistAddress);
-        savePlaylist();
+        console.log("Force Loading playlist...");
+        playlist = await fetchPlaylistData(playlistId);
+        if (playlist && playlist.videos.length>0) {
+            localStorage.setItem('playlist', JSON.stringify(playlist));
+            console.log("Saved Playlist!");
+        } else {
+            console.warn("Could not load playlist from Invidious.");
+            window.alert("Error: Could not load playlist from Invidious.");
+        }
     }
-    showPlaylist();
 }
 
 function checkAllInstances() {
@@ -841,10 +861,11 @@ function initBoolSettings() {
         });
     }
 }
-
+// UI Interactions 
 function toggleSettingsPanel() {settingsPanel.hidden = !settingsPanel.hidden;}
-// Init
+function forceLoadPlaylist() {loadPlaylist(temp_playlistAddress,true);}
 initBoolSettings();
+// Other INIT
 init();
 initVideoEventListeners();
 // Run anything else here

@@ -215,3 +215,7 @@ button {
     display: inline;
     font-size: 16px;
 }
+#s_settingsPanel > button:hover {
+    transition: all 0.5s;
+    background-color: whitesmoke;
+}
