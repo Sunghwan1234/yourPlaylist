@@ -81,7 +81,7 @@ let unsynced = false;
 // BEFORE INIT
 navigator.storage.persist();
 
-const passFullVideo = (videoUrl, audioUrl, videoData) => {
+const passFullVideo = (videoUrl, audioUrl=null, videoData=null) => {
     return {
         videoUrl: videoUrl,
         audioUrl: audioUrl,
@@ -92,12 +92,19 @@ const passFullVideo = (videoUrl, audioUrl, videoData) => {
 function getLocalBoolean(setting) {
     return localStorage.getItem("s_"+setting)=='true';
 }
-async function cacheVideo(videoId, videoUrl) {
-    const cache = await caches.open("cached-videos");
-    const response = await fetch(videoUrl);
-    if (!response.ok) {return;}
-    await cache.put(videoId, response.clone());
-    return response;
+async function cacheVideo(videoId, videoUrl=null, audioUrl=null) {
+    if (audioUrl) {
+        const audioCache = await caches.open("cached-audios");
+        const audioResponse = await fetch(audioUrl);
+        if (!audioResponse.ok) {return;}
+        await cache.put(videoId, audioResponse.clone());
+    }
+    if (videoUrl) {
+        const cache = await caches.open("cached-videos");
+        const response = await fetch(videoUrl);
+        if (!response.ok) {return;}
+        await cache.put(videoId, response.clone());
+    }
 }
 async function getCachedVideo(videoId) {
     const cache = await caches.open("cached-videos");
@@ -107,10 +114,10 @@ async function hasCachedVideo(videoId) {
     return !!(await getCachedVideo(videoid));
 }
 /**
- * fetch but with a catch and abort. Returns the pure response.
+ * fetch but with a catch and abort.
  * @param {*} targetUrl 
  * @param {*} method 
- * @returns pure response
+ * @returns json response
  */
 async function fetchWithCatch(targetUrl, method={}) {
     const controller = new AbortController();
@@ -120,7 +127,7 @@ async function fetchWithCatch(targetUrl, method={}) {
         console.log("Method",method);
         const response = await fetch(targetUrl, method).catch(() => null);
         if (response && response.ok) {
-            return response;
+            return await response.json();
         }
     } catch (error) {
         if (error.name=='AbortError') {
@@ -169,36 +176,38 @@ async function fetchPlaylistData(playlistId) {
     console.error("All Invidious API instances failed.");
     return null;
 }
-/**
- * Uses Invidious and Piped to fetch a video from youtube.
- * @param {*} videoId 
- * @param {*} proxy 
- * @returns pure response
- */
-async function fetchYoutubeVideo(videoId, proxy=null) {
+async function fetchVideo(videoId, proxy=null) {
     for (const domain of INVIDIOUS_API_INSTANCES) {
         console.log("Fetching Domain",domain);
         let targetUrl = wrapInvidious(domain,videoId);
         if (proxy) {targetUrl=addCors_Proxy(proxy,targetUrl);}
-        const response = await fetchWithCatch(targetUrl);
-        if (response) {return response;}
+        const data = await fetchWithCatch(targetUrl);
+        if (data) {return parseVideoData(data, "invidious",videoId);}
     }
+    return null;
+}
+async function fetchPipedVideo(videoId, proxy=null) {
     for (const domain of PIPED_API_INSTANCES) {
         console.log("Fetching Domain",domain);
         let targetUrl = wrapPiped(domain,videoId);
         if (proxy) {targetUrl=addCors_Proxy(proxy,targetUrl);}
-        const response = await fetchWithCatch(targetUrl);
-        if (response) {return response;}
+        const data = await fetchWithCatch(targetUrl);
+        if (data) {return parseVideoData(data, "piped",videoId);}
     }
-    console.warn("Could not fetch using Ind/Pip.");
     return null;
 }
-async function fetchProxiedYoutubeVideo(videoId) {
+async function fetchProxiedVideo(videoId) {
     for (const proxy of CORS_PROXIES) {
-        const response = await fetchYoutubeVideo(videoId, proxy);
-        if (response) {return response;}
+        const data = await fetchVideo(videoId, proxy);
+        if (data) {return data;}
     }
-    console.warn("Could not proxy Ind/Pip.");
+    return null;
+}
+async function fetchProxiedPipedVideo(videoId) {
+    for (const proxy of CORS_PROXIES) {
+        const data = await fetchPipedVideo(videoId, proxy);
+        if (data) {return data;}
+    }
     return null;
 }
 /**
@@ -209,7 +218,7 @@ async function fetchProxiedYoutubeVideo(videoId) {
  */
 async function fetchCobaltVideo(videoId, proxy=null) {
     for (const domain of COBALT_INSTANCES) {
-        const response = await fetchWithCatch(domain, {
+        const data = await fetchWithCatch(domain, {
             method: 'POST',
             headers: {
                 'Accept': 'application/json',
@@ -219,32 +228,23 @@ async function fetchCobaltVideo(videoId, proxy=null) {
                 url: `https://youtube.com/watch?v=${videoId}`,
             })
         });
-        if (response) {return response;}
+        if (data) {return data;}
     }
 }
 /**
- * Loads pure unreadable Video Data. Use parseVideoData()
- * @param {String} videoId 
- * @param {boolean} forceLoad 
- * @param {String} forceSaveAsId Enter a URL to overwrite the save
- * @returns 
+ * handles all fetch operations,
+ * @param {string} videoId 
  */
-async function loadVideoData(videoId, forceLoad, forceSaveAsId=null) {
-    console.log('Loading Video Data of',videoId,", fl,fs",forceLoad,forceSaveAsId);
-    let saved_video = null;
-    if (!forceLoad) {
-        saved_video = JSON.parse(localStorage.getItem(videoId));
-        if (saved_video) {
-            console.log(`Found saved video:`,saved_video);
-            return saved_video;
-        }
-    }
-    let video = await fetchYoutubeVideo(videoId);
+async function loadVideoData(videoId) {
+    console.log("Fetching",videoId);
+    let pipeline="invidious";
+    let video = await fetchVideo(videoId);
     if (!video) {
         console.log("Trying Proxies...");
-        video = await fetchProxiedYoutubeVideo(videoId);
+        video = await fetchProxiedVideo(videoId);
         if (!video) {
             console.log("Trying Cobalt...");
+            pipeline = "cobalt";
             video = await fetchCobaltVideo(videoId);
             if (!video) {
                 console.error("All attempts to load Video Data failed.");
@@ -252,22 +252,55 @@ async function loadVideoData(videoId, forceLoad, forceSaveAsId=null) {
             }
         }
     }
-    console.log(`Successfully got data:`,video);
-    return null;
-    const videoData = video;
-    
-    if ((!forceLoad && !saved_video) || forceSaveAsId) { // maybe () around !saved_video || saveTo
-        console.log("Saving VideoData:",videoData);
-        if (forceSaveAsId) {
-            console.log("Overwriting saved video to alternative:",videoData.title);
-            localStorage.setItem(forceSaveAsId, JSON.stringify(videoData));
-        } else {
-            localStorage.setItem(videoId, JSON.stringify(videoData));
-        }
+    if (pipeline=="cobalt") {
+        return passFullVideo(video.url);
     } else {
-        console.log(saved_video, forceLoad);
+        const formats = { // +1 for webm
+            r144p: 0, r240p: 2, r360p: 4, r480p: 8,
+            r720p: 10, r1080p: 12
+        }; // TODO: TEST TS
+        const videoUrl = video.videoStreams[formats.r480p+1].url; // 480p
+        const audioUrl = video.audioStreams[3].url;
+        return passFullVideo(videoUrl, audioUrl, video);
     }
-    return videoData;
+}
+/**
+ * Loads 
+ * @param {String} videoId 
+ * @param {boolean} forceLoad 
+ * @param {String} forceSaveAsId Enter a URL to overwrite the save
+ * @returns 
+ */
+async function loadTotalVideoData(videoId, forceLoad, forceSaveAsId=null) {
+    console.log('Loading Video Data of',videoId,", fl,fs",forceLoad,forceSaveAsId);
+    let saved_videoData = null;
+    if (!forceLoad) {
+        const cachedVideo = await getCachedVideo(videoId);
+        saved_videoData = JSON.parse(localStorage.getItem(videoId));
+        if (cachedVideo && saved_videoData) {
+            console.log(`Found saved video:`,saved_videoData);
+            const cachedVideoUrl = await cachedVideo.url;
+            return passFullVideo();
+        }
+    }
+    const fullVideo = await loadVideoData(videoId);
+    
+    if ((!forceLoad && !saved_videoData) || forceSaveAsId) { // maybe () around !saved_video || saveTo
+        console.log("Saving fullVideo:",fullVideo);
+        if (forceSaveAsId) {
+            console.log("Overwriting saved video to alternative:",fullVideo.videoData.title);
+            cacheVideo(videoId, fullVideo.videoUrl)
+            localStorage.setItem(forceSaveAsId, JSON.stringify(fullVideo.videoData));
+        } else {
+            localStorage.setItem(videoId, JSON.stringify(fullVideo.videoData));
+        }
+
+
+        
+    } else {
+        console.log(saved_videoData, forceLoad);
+    }
+    return fullVideo;
 }
 /**
  * parses Video Data into one format.
@@ -445,13 +478,13 @@ async function searchSimilarVideo(videoData) {
  */
 async function loadVideo(videoId, forceLoad=getLocalBoolean('forceLoad'), saveAsId=null) {
     console.log(`Loading Video`,videoId);
-    let videoData = await loadVideoData(videoId, forceLoad, saveAsId);
+    let videoData = await loadTotalVideoData(videoId, forceLoad, saveAsId);
     if (!videoData) {return;}
     let videoLoaded = await loadPlayer(videoData);
     if (!videoLoaded) {
         if (!forceLoad) {
             console.error(`Saved Video ${videoData.title} failed to load. ForceLoading...`);
-            videoData = await loadVideoData(videoId, true, videoId);
+            videoData = await loadTotalVideoData(videoId, true, videoId);
             if (!videoData) {return;}
             videoLoaded = await loadPlayer(videoData);
         }
