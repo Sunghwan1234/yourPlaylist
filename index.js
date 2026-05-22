@@ -110,8 +110,9 @@ async function getCachedVideo(videoId) {
     const cache = await caches.open("cached-videos");
     return await cache.match(videoId);
 }
-async function hasCachedVideo(videoId) {
-    return !!(await getCachedVideo(videoid));
+async function getCachedAduio(videoId) {
+    const cache = await caches.open("cached-audios");
+    return await cache.match(videoId);
 }
 /**
  * fetch but with a catch and abort.
@@ -235,7 +236,7 @@ async function fetchCobaltVideo(videoId, proxy=null) {
  * handles all fetch operations,
  * @param {string} videoId 
  */
-async function loadVideoData(videoId) {
+async function loadVideoData(videoId, videoData={}) {
     console.log("Fetching",videoId);
     let pipeline="invidious";
     let video = await fetchVideo(videoId);
@@ -253,7 +254,8 @@ async function loadVideoData(videoId) {
         }
     }
     if (pipeline=="cobalt") {
-        return passFullVideo(video.url);
+        videoData.pipeline = "cobalt";
+        return passFullVideo(video.url,null,videoData);
     } else {
         const formats = { // +1 for webm
             r144p: 0, r240p: 2, r360p: 4, r480p: 8,
@@ -271,32 +273,39 @@ async function loadVideoData(videoId) {
  * @param {String} forceSaveAsId Enter a URL to overwrite the save
  * @returns 
  */
-async function loadTotalVideoData(videoId, forceLoad, forceSaveAsId=null) {
+async function loadTotalVideoData(videoId, videoData, forceLoad, forceSaveAsId=null) {
     console.log('Loading Video Data of',videoId,", fl,fs",forceLoad,forceSaveAsId);
     let saved_videoData = null;
     if (!forceLoad) {
-        const cachedVideo = await getCachedVideo(videoId);
         saved_videoData = JSON.parse(localStorage.getItem(videoId));
-        if (cachedVideo && saved_videoData) {
-            console.log(`Found saved video:`,saved_videoData);
-            const cachedVideoUrl = await cachedVideo.url;
-            return passFullVideo();
+        if (saved_videoData) {
+            const cachedVideo = await getCachedVideo(videoId);
+            if (cachedVideo) {
+                const blob = await cachedVideo.blob();
+                const videoUrl = URL.createObjectURL(blob);
+                let audioUrl = null;
+                if (saved_videoData.pipeline = "cobalt") {
+                    
+                } else {
+                    const cachedAudio = await getCachedAudio(videoId);
+                    const blob = await cachedAudio.blob();
+                    audioUrl = URL.createObjectURL(blob);
+                }
+                console.log(`Found saved video:`,saved_videoData);
+                return passFullVideo(videoUrl, audioUrl, saved_videoData);
+            }
         }
     }
-    const fullVideo = await loadVideoData(videoId);
+    const fullVideo = await loadVideoData(videoId, videoData);
     
     if ((!forceLoad && !saved_videoData) || forceSaveAsId) { // maybe () around !saved_video || saveTo
         console.log("Saving fullVideo:",fullVideo);
         if (forceSaveAsId) {
             console.log("Overwriting saved video to alternative:",fullVideo.videoData.title);
-            cacheVideo(videoId, fullVideo.videoUrl)
-            localStorage.setItem(forceSaveAsId, JSON.stringify(fullVideo.videoData));
-        } else {
-            localStorage.setItem(videoId, JSON.stringify(fullVideo.videoData));
+            videoId = forceSaveAsId;
         }
-
-
-        
+        cacheVideo(videoId, fullVideo.videoUrl, fullVideo.audioUrl)
+        localStorage.setItem(videoId, JSON.stringify(fullVideo.videoData));
     } else {
         console.log(saved_videoData, forceLoad);
     }
