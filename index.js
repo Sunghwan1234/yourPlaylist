@@ -11,8 +11,8 @@ const thumbnail = document.getElementById("thumbnail");
 const settingsPanel = document.getElementById("s_settingsPanel");
 
 const INVIDIOUS_INSTANCES = [
-    // "inv.nadeko.net", // Endpoint Disabled
-    "yt.chocolatemoo53.com", // Invalid(blank)
+    //"inv.nadeko.net", // Endpoint Disabled
+    //"yt.chocolatemoo53.com",
     // "invidious.nerdvpn.de", // Auth required
     // "yewtu.be", // Is a frontend
     //"inv.thepixora.com",
@@ -20,27 +20,44 @@ const INVIDIOUS_INSTANCES = [
 const INVIDIOUS_API_INSTANCES = [
     "inv.thepixora.com"
 ];
+/**
+ * Nothing is working btw
+ * https://github.com/TeamPiped/documentation/blob/main/content/docs/public-instances/index.md
+ * https://github.com/TeamPiped/Piped/wiki/Instances/408b500c3e205e95a197d42b33345c1f207ba62b
+ * https://awsmfoss.com/piped/
+ */
 const PIPED_API_INSTANCES = [
-    "pipedapi.kavin.rocks", // CORS
-    // "api.piped.private.coffee", // Youtube Restricted
-    // "pipedapi.leptons.xyz", // CORS // Cloudflare is bad 5/20
-    //"pipedapi.nosebs.ru", NOT RESOLVED
-    //"pipedapi-libre.kavin.rocks", 502 BAD GATEWAY
-    // "pipedapi.orangenet.cc", // CORS // Frontend?
+    //"pipedapi.kavin.rocks", // 526 CORS
+    //"api.piped.private.coffee", // 500
+    //"pipedapi.leptons.xyz", // 502 BAD GATEWAY CORS
+    //"pipedapi-libre.kavin.rocks", // 502 BAD GATEWAY
+    //"pipedapi.orangenet.cc", // Frontend
+    "piped.syncpundit.io",
+    //"nuv3d-7iaaa-aaaan-qahma-cai.ic0.app", // Frontend
+];
+/**
+ * https://github.com/imputnet/cobalt
+ */
+const COBALT_INSTANCES = [
+
 ]
 /**
  * https://www.whateverorigin.org/
  * https://allorigins.win/
  * https://github.com/Freeboard/thingproxy
  * https://codetabs.com/cors-proxy/cors-proxy.html
+ * https://cors.lol/#getStarted
+ * https://github.com/Eiledon/alloworigin
  */
 const CORS_PROXIES = [
-    // "corsproxy.io/?url=",
+    //"corsproxy.io/?url=",
     //"proxy.corsfix.com/?", // Must signup
-    "api.allorigins.win/raw?url=", // slow
-    "whateverorigin.org/get?url=",
     // "thingproxy.freeboard.io/fetch/", // 10r/s
     "api.codetabs.com/v1/proxy?quest=", // 5r/s slow
+    //"api.allorigins.win/raw?url=", // slow
+    //"whateverorigin.org/get?url=", // 20r/s 500(ServerError)
+    "api.cors.lol/?url=", // FileLimit20mb but works
+    //"alloworigin.com/get?url=", // Failing
 ];
 const SUCCESSFUL_PROXIES = [];
 function addCors_Proxy(cors_proxy, url) {
@@ -141,7 +158,7 @@ async function fetchVideo(videoId) {
     for (let domain of INVIDIOUS_API_INSTANCES) {
         const targetUrl = `https://${domain}/api/v1/videos/${videoId}`;
         console.log("Fetching "+targetUrl);
-        const data = await fetchWithCatch(targetUrl, controller.signal);
+        const data = await fetchWithCatch(targetUrl);
         if (!data) {continue;}
         return data;
     }
@@ -162,9 +179,9 @@ async function fetchProxiedVideo(videoId) {
     for (let proxy of CORS_PROXIES) {
         for (let domain of INVIDIOUS_INSTANCES) {
             const domainUrl = `https://${domain}/api/v1/videos/${videoId}`;
-            console.log(`gPVD: URL: ${domainUrl}`)
+            console.log(`gPVD Proxy:`,proxy,"Domain",domainUrl);
             const targetUrl = addCors_Proxy(proxy, domainUrl);
-            console.log(`gPVD: Fetching ${targetUrl}`);
+            //console.log(`gPVD Fetching ${targetUrl}`);
             const data = await fetchWithCatch(targetUrl);
             if (data) {
                 return data;
@@ -182,9 +199,9 @@ async function fetchProxiedPipedVideo(videoId) {
     for (let proxy of CORS_PROXIES) {
         for (let domain of PIPED_API_INSTANCES) {
             const domainUrl = `https://${domain}/streams/${videoId}`;
-            console.log(`gPVD: URL: ${domainUrl}`)
+            console.log(`gPVD Proxy:`,proxy,"Domain",domainUrl);
             const targetUrl = addCors_Proxy(proxy, domainUrl);
-            console.log(`gPVD: Fetching ${targetUrl}`);
+            //console.log(`gPVD: Fetching ${targetUrl}`);
             const data = await fetchWithCatch(targetUrl);
             if (data) {
                 return data;
@@ -216,19 +233,19 @@ async function loadVideoData(videoId, forceLoad, forceSaveAsId=null) {
         }
     }
     let pipeline = "invidious";
-    let video = null;//await fetchVideo(videoId);
+    let video = await fetchVideo(videoId);
     if (!video) {
-        pipeline = "piped";
-        console.log("Trying Piped Videos...");
-        video = await fetchPipedVideo(videoId);
+        // pipeline = "piped";
+        // console.log("Trying Piped Videos...");
+        // video = await fetchPipedVideo(videoId);
         if (!video) {
             pipeline = "invidious";
             console.log("Trying Proxies...");
             video = await fetchProxiedVideo(videoId);
             if (!video) {
-                pipeline = "piped";
-                console.log("Trying Proxied Piped...");
-                video = await fetchProxiedPipedVideo(videoId);
+                // pipeline = "piped";
+                // console.log("Trying Proxied Piped...");
+                // video = await fetchProxiedPipedVideo(videoId);
                 if (!video){
                     console.error("All attempts to load Video Data failed.");
                     return null;
