@@ -11,15 +11,16 @@ const thumbnail = document.getElementById("thumbnail");
 const settingsPanel = document.getElementById("s_settingsPanel");
 
 const INVIDIOUS_INSTANCES = [
-    //"inv.nadeko.net", // Endpoint Disabled
-    //"yt.chocolatemoo53.com",
+    "inv.nadeko.net", // Endpoint Disabled
+    "yt.chocolatemoo53.com",
     // "invidious.nerdvpn.de", // Auth required
     // "yewtu.be", // Is a frontend
-    //"inv.thepixora.com",
+    "inv.thepixora.com",
 ];
 const INVIDIOUS_API_INSTANCES = [
     "inv.thepixora.com"
 ];
+const wrapInvidious = (domain,vId)=>{return `https://${domain}/api/v1/videos/${vId}`;}
 /**
  * Nothing is working btw
  * https://github.com/TeamPiped/documentation/blob/main/content/docs/public-instances/index.md
@@ -32,15 +33,25 @@ const PIPED_API_INSTANCES = [
     //"pipedapi.leptons.xyz", // 502 BAD GATEWAY CORS
     //"pipedapi-libre.kavin.rocks", // 502 BAD GATEWAY
     //"pipedapi.orangenet.cc", // Frontend
-    "piped.syncpundit.io",
+    //"piped.syncpundit.io",
     //"nuv3d-7iaaa-aaaan-qahma-cai.ic0.app", // Frontend
 ];
+const wrapPiped=(domain,vId)=>{return `https://${domain}/streams/${vId}`;}
 /**
  * https://github.com/imputnet/cobalt
+ * https://cobalt.directory/
+ * API: https://cobalt.directory/api/working?type=api
  */
-const COBALT_INSTANCES = [
-
-]
+const COBALT_DIRECTORY = "https://cobalt.directory/api/working?type=api";
+let COBALT_INSTANCES = [];
+async function fetchCobaltDirectory() {
+    console.log("Fetching Cobalt Directory...");
+    const response = await fetchWithCatch(COBALT_DIRECTORY);
+    if (response) {
+        COBALT_INSTANCES = response.data.youtube;
+        console.log(COBALT_INSTANCES);
+    }
+}
 /**
  * https://www.whateverorigin.org/
  * https://allorigins.win/
@@ -52,10 +63,9 @@ const CORS_PROXIES = [
     //"proxy.corsfix.com/?", // Must signup
     //"api.allorigins.win/raw?url=", // slow
     //"whateverorigin.org/get?url=", // 20r/s 500(ServerError)
-    "api.cors.lol/?url=", // FileLimit20mb
+    "api.cors.lol/?url=", // FileLimit20mb and slow
     //"alloworigin.com/get?url=", // Failing
 ];
-let available_instances;
 function addCors_Proxy(cors_proxy, url) {
     return `https://${cors_proxy}${encodeURIComponent(url)}`;
 }
@@ -71,22 +81,30 @@ let unsynced = false;
 function getLocalBoolean(setting) {
     return localStorage.getItem("s_"+setting)=='true';
 }
-/** Awaits a fetch with response ok. You only need to check if it is null. */
-async function fetchWithCatch(targetUrl) {
+async function cacheVideo(videoId, videoUrl) {
+    const cache = await caches.open("cached-videos");
+    await cache.put(videoId,videoUrl);
+    console.log("Cached",videoId);
+}
+async function openCachedVideo(videoId) {
+    const cache = await caches.open("cached-videos");
+    const response = await cache.match(videoId);
+}
+/**
+ * fetch but with a catch and abort. Returns the pure response.
+ * @param {*} targetUrl 
+ * @param {*} method 
+ * @returns pure response
+ */
+async function fetchWithCatch(targetUrl, method={}) {
     const controller = new AbortController();
     const timeoutId = setTimeout(()=>controller.abort(),10*1000);
     try {
-        const response = await fetch(targetUrl, {
-            signal: controller.signal
-        }).catch(() => null);
+        method.signal = controller.signal;
+        console.log("Method",method);
+        const response = await fetch(targetUrl, method).catch(() => null);
         if (response && response.ok) {
-            const raw = await response.text();
-            try {
-                return JSON.parse(raw);
-            } catch (parseError) {
-                console.warn(`URL ${targetUrl} did not return valid:`,raw);
-                return null;
-            }
+            return response;
         }
     } catch (error) {
         if (error.name=='AbortError') {
@@ -135,54 +153,67 @@ async function fetchPlaylistData(playlistId) {
     console.error("All Invidious API instances failed.");
     return null;
 }
-/** Get a video from a URL */
-async function fetchVideo(videoId) {
-    for (let domain of INVIDIOUS_API_INSTANCES) {
-        const targetUrl = `https://${domain}/api/v1/videos/${videoId}`;
-        console.log("Fetching "+targetUrl);
+/**
+ * Uses Invidious and Piped to fetch a video from youtube.
+ * @param {*} videoId 
+ * @param {*} proxy 
+ * @returns 
+ */
+async function fetchYoutubeVideo(videoId, proxy=null) {
+    for (const domain of INVIDIOUS_API_INSTANCES) {
+        console.log("Fetching Domain",domain);
+        let targetUrl = wrapInvidious(domain,videoId);
+        if (proxy) {targetUrl=addCors_Proxy(proxy,targetUrl);}
         const data = await fetchWithCatch(targetUrl);
-        if (!data) {continue;}
-        return data;
+        if (data) {return parseVideoData(data, "invidious", videoId);}
     }
-    console.error("All Invidious API instances failed.");
+    for (const domain of PIPED_API_INSTANCES) {
+        console.log("Fetching Domain",domain);
+        let targetUrl = wrapPiped(domain,videoId);
+        if (proxy) {targetUrl=addCors_Proxy(proxy,targetUrl);}
+        const data = await fetchWithCatch(targetUrl);
+        if (data) {return parseVideoData(data, "piped", videoId);}
+    }
+    console.warn("Could not fetch using Ind/Pip.");
     return null;
 }
-async function fetchPipedVideo(videoId) {
-    for (let domain of PIPED_API_INSTANCES) {
-        const targetUrl = `https://${domain}/streams/${videoId}`;
-        console.log("Fetching",targetUrl);
-        const data = await fetchWithCatch(targetUrl);
-        if (!data) {continue;}
-        return data;
+async function fetchProxiedYoutubeVideo(videoId) {
+    for (const proxy of CORS_PROXIES) {
+        const data = fetchYoutubeVideo(videoId, proxy);
+        if (data) {return data;}
     }
+    console.warn("Could not proxy Ind/Pip.");
+    return null;
 }
-
-async function fetchProxiedVideo(videoId) {
-    for (let proxy of CORS_PROXIES) {
-        for (let domain of INVIDIOUS_INSTANCES) {
-            const domainUrl = `https://${domain}/api/v1/videos/${videoId}`;
-            console.log(`gPVD Proxy:`,proxy,"Domain",domainUrl);
-            const targetUrl = addCors_Proxy(proxy, domainUrl);
-            //console.log(`gPVD Fetching ${targetUrl}`);
-            const data = await fetchWithCatch(targetUrl);
-            if (data) {
-                return data;
-            }
+/**
+ * https://github.com/imputnet/cobalt/blob/main/docs/api.md
+ * @param {*} videoId 
+ * @param {*} proxy 
+ * @returns the json return
+ */
+async function fetchCobaltVideo(videoId, proxy=null) {
+    for (const domain of COBALT_INSTANCES) {
+        const response = await fetch(domain, {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                url: `https://youtube.com/watch?v=${videoId}`,
+            })
+        }).catch(()=>null);
+        if (!response || !response.ok) {
+            console.warn(domain,"Domain from Cobalt Error:",response);
+            continue;
         }
-    }
-    return null;
-}
-async function fetchProxiedPipedVideo(videoId) {
-    for (let proxy of CORS_PROXIES) {
-        for (let domain of PIPED_API_INSTANCES) {
-            const domainUrl = `https://${domain}/streams/${videoId}`;
-            console.log(`gPVD Proxy:`,proxy,"Domain",domainUrl);
-            const targetUrl = addCors_Proxy(proxy, domainUrl);
-            //console.log(`gPVD: Fetching ${targetUrl}`);
-            const data = await fetchWithCatch(targetUrl);
-            if (data) {
-                return data;
-            }
+        const data = await response.json();
+        if (data.status==='error') {
+            console.warn(domain,"Domain gave error:",data.text);
+            continue;
+        } else {
+            console.log("Cobalt Return:",data);
+            return data;
         }
     }
 }
@@ -204,29 +235,22 @@ async function loadVideoData(videoId, forceLoad, forceSaveAsId=null) {
             return saved_video;
         }
     }
-    let pipeline = "invidious";
-    let video = await fetchVideo(videoId);
+    let video = await fetchYoutubeVideo(videoId);
     if (!video) {
-        // pipeline = "piped";
-        // console.log("Trying Piped Videos...");
-        // video = await fetchPipedVideo(videoId);
+        console.log("Trying Proxies...");
+        video = await fetchProxiedYoutubeVideo(videoId);
         if (!video) {
-            pipeline = "invidious";
-            console.log("Trying Proxies...");
-            video = await fetchProxiedVideo(videoId);
+            console.log("Trying Cobalt...");
+            video = await fetchCobaltVideo(videoId);
             if (!video) {
-                // pipeline = "piped";
-                // console.log("Trying Proxied Piped...");
-                // video = await fetchProxiedPipedVideo(videoId);
-                if (!video){
-                    console.error("All attempts to load Video Data failed.");
-                    return null;
-                }
+                console.error("All attempts to load Video Data failed.");
+                return null;
             }
         }
     }
     console.log(`Successfully got data:`,video);
-    const videoData = parseVideoData(video,pipeline,videoId);
+    return null;
+    const videoData = video;
     
     if ((!forceLoad && !saved_video) || forceSaveAsId) { // maybe () around !saved_video || saveTo
         console.log("Saving VideoData:",videoData);
@@ -365,7 +389,6 @@ function parseVideoData(data, pipeline="invidious", videoId) {
     }
     return null;
 }
-
 /**
  * Searched using videoData for the most similar video.
  * @param {*} videoData 
@@ -409,7 +432,6 @@ async function searchSimilarVideo(videoData) {
     console.error("No similar videos found, or domains returned error");
     return null;
 }
-
 /**
  * 
  * @param {*} videoId 
@@ -715,3 +737,4 @@ initBoolSettings();
 init();
 initVideoEventListeners();
 // Run anything else here
+fetchCobaltDirectory();
