@@ -87,18 +87,18 @@ const settings = {
 navigator.storage.persist();
 /**
  * 
- * @param {string} videoUrl 
- * @param {string} audioUrl 
+ * @param {string} videoResponse 
+ * @param {string} audioResponse 
  * @param {object} videoData 
  * @param {object} playlistVData 
  * @returns fullVideo
  */
-const passFullVideo = (videoUrl, audioUrl=null, videoData=null, playlistVData=null) => {
+const passFullVideo = (videoResponse, audioResponse=null, videoData=null, playlistVData=null) => {
     const title = videoData?.title || playlistVData?.title || 'title not found';
     const author = videoData?.author || playlistVData?.author || 'author not found';
     return {
-        videoUrl: videoUrl,
-        audioUrl: audioUrl,
+        videoResponse: videoResponse,
+        audioResponse: audioResponse,
         videoData: videoData,
         playlistVData: playlistVData,
         title: title,
@@ -109,35 +109,73 @@ const passFullVideo = (videoUrl, audioUrl=null, videoData=null, playlistVData=nu
 function getLocalBoolean(setting) {
     return localStorage.getItem("s_"+setting)=='true';
 }
-async function cacheVideo(videoId, videoUrl=null, audioUrl=null) {
+async function fetchUrls(videoUrl, audioUrl=null) {
+    let responses = {
+        videoResponse: null,
+        audioResponse: null,
+    };
+    if (audioUrl) {
+        const audioResponse = await fetch(audioUrl);
+        if (audioResponse.ok) {
+            responses.audioResponse = audioResponse;
+        } else {
+            return false;
+        }
+    }
+    if (videoUrl) {
+        const videoResponse = await fetch(videoUrl);
+        if (videoResponse.ok) {
+            responses.videoResponse = videoResponse;
+        } else {
+            return false;
+        }
+    }
+    return responses;
+}
+/**
+ * caches responses. Make sure to use .clone()
+ * @param {*} videoId 
+ * @param {*} videoResponse 
+ * @param {*} audioResponse
+ * @returns responses object: .videoResponse and .audioResponse
+ */
+async function cacheVideo(videoId, videoResponse=null, audioResponse=null) {
     if (audioUrl) {
         const audioCache = await caches.open("cached-audios");
-        const audioResponse = await fetch(audioUrl);
-        if (!audioResponse.ok) {return;}
-        await audioCache.put(videoId, audioResponse.clone());
+        if (audioResponse.ok) {
+            await audioCache.put(videoId, audioResponse.clone());
+            responses.audioResponse = audioResponse;
+        } else {
+            return false;
+        }
     }
     if (videoUrl) {
         const cache = await caches.open("cached-videos");
-        const response = await fetch(videoUrl);
-        if (!response.ok) {return;}
-        await cache.put(videoId, response.clone());
+        if (videoResponse.ok) {
+            await cache.put(videoId, videoResponse.clone());
+            responses.videoResponse = videoResponse;
+        } else {
+            return false;
+        }
     }
+    return true;
 }
+/**
+ * Returns a response. Get the blob using .blob()
+ * @param {*} videoId 
+ * @returns 
+ */
 async function getCachedVideo(videoId) {
     const cache = await caches.open("cached-videos");
     const data = await cache.match(videoId);
-    if (!await validateMedia(data)) {
-        return null;
-    } else {
-        return data;
-    }
+    return data;
 }
-async function getCachedAduio(videoId) {
+async function getCachedAudio(videoId) {
     const cache = await caches.open("cached-audios");
     return await cache.match(videoId);
 }
 
-async function validateMedia(url) {
+async function returnBlob(url) {
     const res = await fetch(url);
     const blob = await res.blob();
 
@@ -236,7 +274,10 @@ async function fetchVideo(videoId, proxy=null) {
         let targetUrl = wrapInvidious(domain,videoId);
         if (proxy) {targetUrl=addCors_Proxy(proxy,targetUrl);}
         const data = await fetchWithCatch(targetUrl);
-        if (data) {return parseVideoData(data, "invidious",videoId);}
+        if (data) {
+            const parsedData = parseVideoData(data, "invidious",videoId);
+            return passFullVideo()
+        }
     }
     return null;
 }
@@ -286,10 +327,7 @@ async function fetchCobaltVideo(videoId, proxy=null) {
         });
         if (!data || data.status === "error") {continue;}
         if (!data.url) {continue;}
-        if (!await validateMedia(data.url)) {
-            console.warn("Domain",domain,"url is null");
-            continue;
-        }
+        if (await returnBlob)
         console.log("fCobalt: Domain",domain,"Returned:",data);
         return data;
     }
@@ -617,7 +655,7 @@ async function loadPlayer(fullVideo) {
     audioPlayer.currentTime = 0;
     audioPlayer.src = audioUrl;
 
-    const blob = await validateMedia(videoUrl);
+    const blob = await returnBlob(videoUrl);
     if (!blob) {
         console.warn("LP: Blob is null");
         return false;
@@ -652,7 +690,7 @@ async function loadVideoPlayer(fullVideo) {
         thumbnail.src = fullVideo.videoData.thumbnails[0].url;
     } else {
         console.log("loadVideoPlayer: Loading Video URL:", fullVideo.videoUrl);
-        const blob = await validateMedia(videoUrl);
+        const blob = await returnBlob(fullVideo.videoUrl);
         videoPlayer.src = URL.createObjectURL(blob);
         await videoPlayer.load();
     }
@@ -769,7 +807,7 @@ async function initVideoEventListeners() {
             backgroundPlaybackStatus = false;
             },100);
         } else {
-            if (audioPlayer.src && audioPlayer.paused) {
+            if (currentVideo.audioUrl && audioPlayer.paused) {
                 videoPlayer.currentTime = audioPlayer.currentTime;
                 audioPlayer.play().then(()=>{updateMediaSession(currentVideo)});
                 audioPlayer.muted = false;
@@ -782,7 +820,7 @@ async function initVideoEventListeners() {
             backgroundPlaybackStatus = true;
         } else {
             updateMediaSession(currentVideo);
-            if (audioPlayer.src) {
+            if (currentVideo.audioUrl) {
                 audioPlayer.pause()
             
                 audioPlayer.muted = true;
@@ -794,7 +832,7 @@ async function initVideoEventListeners() {
         console.log("seek");
         if (!backgroundPlaybackStatus) {
             isSeeking = true;
-            if (audioPlayer.src) {
+            if (currentVideo.audioUrl) {
                 audioPlayer.currentTime = videoPlayer.currentTime;
             }
             updateMediaSession(currentVideo);
@@ -804,7 +842,7 @@ async function initVideoEventListeners() {
         console.log("seeked");
         if (!backgroundPlaybackStatus) {
             updateMediaSession(currentVideo);
-            if (audioPlayer.src) {
+            if (currentVideo.audioUrl) {
                 audioPlayer.muted = false;
             }
             setTimeout(()=>{isSeeking=false;}, 10);
@@ -823,12 +861,12 @@ async function initVideoEventListeners() {
             if (unsynced) { // video did not load in background?
                 if (currentVideo) {
                     await loadVideoPlayer(currentVideo);
-                    if (audioPlayer.src) {
+                    if (currentVideo.audioUrl) {
                         audioPlayer.muted = true;
                     }
                     videoPlayer.addEventListener('loadedmetadata', function syncOnLoad() {
                         videoPlayer.currentTime = audioPlayer.currentTime;
-                        if (audioPlayer.src && !audioPlayer.paused) {
+                        if (currentVideo.audioUrl && !audioPlayer.paused) {
                             audioPlayer.muted = false;
                             playVideoPlayer();
                         }
