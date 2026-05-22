@@ -78,17 +78,33 @@ let currentVideoIndex=0;
 let backgroundPlaybackStatus = false;
 let unsynced = false;
 
+// BEFORE INIT
+navigator.storage.persist();
+
+const passFullVideo = (videoUrl, audioUrl, videoData) => {
+    return {
+        videoUrl: videoUrl,
+        audioUrl: audioUrl,
+        videoData: videoData,
+    }
+}
+
 function getLocalBoolean(setting) {
     return localStorage.getItem("s_"+setting)=='true';
 }
 async function cacheVideo(videoId, videoUrl) {
     const cache = await caches.open("cached-videos");
-    await cache.put(videoId,videoUrl);
-    console.log("Cached",videoId);
+    const response = await fetch(videoUrl);
+    if (!response.ok) {return;}
+    await cache.put(videoId, response.clone());
+    return response;
 }
-async function openCachedVideo(videoId) {
+async function getCachedVideo(videoId) {
     const cache = await caches.open("cached-videos");
-    const response = await cache.match(videoId);
+    return await cache.match(videoId);
+}
+async function hasCachedVideo(videoId) {
+    return !!(await getCachedVideo(videoid));
 }
 /**
  * fetch but with a catch and abort. Returns the pure response.
@@ -108,7 +124,7 @@ async function fetchWithCatch(targetUrl, method={}) {
         }
     } catch (error) {
         if (error.name=='AbortError') {
-            console.warn("Timed out (5s)");
+            console.warn("Timed out (10s)");
             return null;
         }
         throw error;
@@ -157,30 +173,30 @@ async function fetchPlaylistData(playlistId) {
  * Uses Invidious and Piped to fetch a video from youtube.
  * @param {*} videoId 
  * @param {*} proxy 
- * @returns 
+ * @returns pure response
  */
 async function fetchYoutubeVideo(videoId, proxy=null) {
     for (const domain of INVIDIOUS_API_INSTANCES) {
         console.log("Fetching Domain",domain);
         let targetUrl = wrapInvidious(domain,videoId);
         if (proxy) {targetUrl=addCors_Proxy(proxy,targetUrl);}
-        const data = await fetchWithCatch(targetUrl);
-        if (data) {return parseVideoData(data, "invidious", videoId);}
+        const response = await fetchWithCatch(targetUrl);
+        if (response) {return response;}
     }
     for (const domain of PIPED_API_INSTANCES) {
         console.log("Fetching Domain",domain);
         let targetUrl = wrapPiped(domain,videoId);
         if (proxy) {targetUrl=addCors_Proxy(proxy,targetUrl);}
-        const data = await fetchWithCatch(targetUrl);
-        if (data) {return parseVideoData(data, "piped", videoId);}
+        const response = await fetchWithCatch(targetUrl);
+        if (response) {return response;}
     }
     console.warn("Could not fetch using Ind/Pip.");
     return null;
 }
 async function fetchProxiedYoutubeVideo(videoId) {
     for (const proxy of CORS_PROXIES) {
-        const data = fetchYoutubeVideo(videoId, proxy);
-        if (data) {return data;}
+        const response = await fetchYoutubeVideo(videoId, proxy);
+        if (response) {return response;}
     }
     console.warn("Could not proxy Ind/Pip.");
     return null;
@@ -193,7 +209,7 @@ async function fetchProxiedYoutubeVideo(videoId) {
  */
 async function fetchCobaltVideo(videoId, proxy=null) {
     for (const domain of COBALT_INSTANCES) {
-        const response = await fetch(domain, {
+        const response = await fetchWithCatch(domain, {
             method: 'POST',
             headers: {
                 'Accept': 'application/json',
@@ -202,22 +218,10 @@ async function fetchCobaltVideo(videoId, proxy=null) {
             body: JSON.stringify({
                 url: `https://youtube.com/watch?v=${videoId}`,
             })
-        }).catch(()=>null);
-        if (!response || !response.ok) {
-            console.warn(domain,"Domain from Cobalt Error:",response);
-            continue;
-        }
-        const data = await response.json();
-        if (data.status==='error') {
-            console.warn(domain,"Domain gave error:",data.text);
-            continue;
-        } else {
-            console.log("Cobalt Return:",data);
-            return data;
-        }
+        });
+        if (response) {return response;}
     }
 }
-
 /**
  * Loads pure unreadable Video Data. Use parseVideoData()
  * @param {String} videoId 
@@ -491,11 +495,10 @@ async function loadVideoIndex(videoIndex, forceLoad=getLocalBoolean('forceLoad')
  * @param {*} saveAsId ID to overwrite original
  * @returns {Boolean} Success or not
  */
-async function loadPlayer(videoData) {
+async function loadPlayer(videoUrl, audioUrl, videoData) {
     videoPlayer.pause();
     videoPlayer.hidden = getLocalBoolean('useThumbnail');
     audioPlayer.currentTime = 0;
-    const audioUrl = videoData.audioStreams[3].url; // TODO: TEST TS
     audioPlayer.src = audioUrl;
 
     await loadVideoPlayer(videoData);
@@ -518,20 +521,20 @@ async function loadPlayer(videoData) {
     return true;
 }
 
-async function loadVideoPlayer(videoData) {
+async function loadVideoPlayer(videoUrl, thumbnailUrl, videoData) {
     document.getElementById("video_name").textContent = videoData.title;
     document.getElementById("video_author").textContent = videoData.author;
 
     if (getLocalBoolean('useThumbnail')) {
-        thumbnail.src = videoData.thumbnails[0].url;
+        thumbnail.src = thumbnailUrl
     } else {
-        const resolutions = [];
-        const formats = { // +1 for webm
-            r144p: 0, r240p: 2, r360p: 4, r480p: 8,
-            r720p: 10, r1080p: 12
-        }; // TODO: TEST TS
-        const videoUrl = videoData.videoStreams[formats.r480p+1].url; // 480p
-        console.log("loadVideoPlayer: Loading Video URL:",videoUrl);
+        // const resolutions = [];
+        // const formats = { // +1 for webm
+        //     r144p: 0, r240p: 2, r360p: 4, r480p: 8,
+        //     r720p: 10, r1080p: 12
+        // }; // TODO: TEST TS
+        //const videoUrl = videoData.videoStreams[formats.r480p+1].url; // 480p
+        console.log("loadVideoPlayer: Loading Video URL:", videoUrl);
         videoPlayer.src = videoUrl;
         await videoPlayer.load();
     }
