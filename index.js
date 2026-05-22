@@ -11,35 +11,38 @@ const thumbnail = document.getElementById("thumbnail");
 const settingsPanel = document.getElementById("s_settingsPanel");
 
 const INVIDIOUS_INSTANCES = [
-    "inv.nadeko.net", // Endpoint Disabled
-    "yt.chocolatemoo53.com",
+    // "inv.nadeko.net", // Endpoint Disabled
+    "yt.chocolatemoo53.com", // Invalid(blank)
     // "invidious.nerdvpn.de", // Auth required
     // "yewtu.be", // Is a frontend
-    "inv.thepixora.com",
+    //"inv.thepixora.com",
 ];
 const INVIDIOUS_API_INSTANCES = [
     "inv.thepixora.com"
 ];
 const PIPED_API_INSTANCES = [
     "pipedapi.kavin.rocks", // CORS
-    "api.piped.private.coffee",
-    "pipedapi.leptons.xyz", // CORS
+    // "api.piped.private.coffee", // Youtube Restricted
+    // "pipedapi.leptons.xyz", // CORS // Cloudflare is bad 5/20
     //"pipedapi.nosebs.ru", NOT RESOLVED
     //"pipedapi-libre.kavin.rocks", 502 BAD GATEWAY
-    "pipedapi.orangenet.cc", // CORS
+    // "pipedapi.orangenet.cc", // CORS // Frontend?
 ]
 /**
  * https://www.whateverorigin.org/
  * https://allorigins.win/
- * 
+ * https://github.com/Freeboard/thingproxy
+ * https://codetabs.com/cors-proxy/cors-proxy.html
  */
 const CORS_PROXIES = [
     // "corsproxy.io/?url=",
     //"proxy.corsfix.com/?", // Must signup
-    "api.allorigins.win/raw?url=",
+    "api.allorigins.win/raw?url=", // slow
     "whateverorigin.org/get?url=",
+    // "thingproxy.freeboard.io/fetch/", // 10r/s
+    "api.codetabs.com/v1/proxy?quest=", // 5r/s slow
 ];
-let available_instances;
+const SUCCESSFUL_PROXIES = [];
 function addCors_Proxy(cors_proxy, url) {
     return `https://${cors_proxy}${encodeURIComponent(url)}`;
 }
@@ -55,32 +58,46 @@ let unsynced = false;
 function getLocalBoolean(setting) {
     return localStorage.getItem("s_"+setting)=='true';
 }
-/** Awaits a fetch with response ok. You only need to check if it is null. */
+/**
+ * 
+ * @param {*} targetUrl 
+ * @returns data or null
+ */
+let fetchWithCatchError;
 async function fetchWithCatch(targetUrl) {
+    fetchWithCatchError = null;
     const controller = new AbortController();
-    const timeoutId = setTimeout(()=>controller.abort(),5*1000);
+    const timeoutId = setTimeout(()=>controller.abort(),10*1000);
     try {
         const response = await fetch(targetUrl, {
             signal: controller.signal
-        }).catch(() => null);
+        }).catch((error) => {
+            fetchWithCatchError = error.status;
+            return null;
+        });
         if (response && response.ok) {
             const raw = await response.text();
             try {
-                return JSON.parse(raw);
+                const data =JSON.parse(raw);
+                if ("url" in data) {
+                    return data;
+                }
+                console.warn("URL Not in",data);
             } catch (parseError) {
                 console.warn(`URL ${targetUrl} did not return valid:`,raw);
                 return null;
             }
+        } else {
+            fetchWithCatchError = response.status;
         }
     } catch (error) {
-        if (error.name=='AbortError') {
-            console.warn("Timed out (5s)");
-            return null;
-        }
-        throw error;
+        console.warn("Timed out or other error");
+        return null;
     } finally {
         clearTimeout(timeoutId);
     }
+    console.warn("Unknown error");
+    return null;
 }
 /** Get the Playlist */
 async function fetchPlaylistData(playlistId) {
@@ -151,6 +168,11 @@ async function fetchProxiedVideo(videoId) {
             const data = await fetchWithCatch(targetUrl);
             if (data) {
                 return data;
+            } else {
+                if (fetchWithCatchError==500) {
+                    console.warn("Skipped Proxy with 500");
+                    break;
+                }
             }
         }
     }
@@ -166,6 +188,11 @@ async function fetchProxiedPipedVideo(videoId) {
             const data = await fetchWithCatch(targetUrl);
             if (data) {
                 return data;
+            } else {
+                if (fetchWithCatchError==500) {
+                    console.warn("Skipped Proxy with 500");
+                    break;
+                }
             }
         }
     }
@@ -454,30 +481,34 @@ async function loadVideoIndex(videoIndex, forceLoad=getLocalBoolean('forceLoad')
  * @returns {Boolean} Success or not
  */
 async function loadPlayer(videoData) {
-    videoPlayer.pause();
-    videoPlayer.hidden = getLocalBoolean('useThumbnail');
-    audioPlayer.currentTime = 0;
-    const audioUrl = videoData.audioStreams[3].url; // TODO: TEST TS
-    audioPlayer.src = audioUrl;
+    try {
+        videoPlayer.pause();
+        videoPlayer.hidden = getLocalBoolean('useThumbnail');
+        audioPlayer.currentTime = 0;
+        const audioUrl = videoData.audioStreams[3].url; // TODO: TEST TS
+        audioPlayer.src = audioUrl;
 
-    await loadVideoPlayer(videoData);
-    if (getLocalBoolean('useThumbnail') || document.hidden) {
-        audioPlayer.play().then(() => updateMediaSession(videoData));
+        await loadVideoPlayer(videoData);
+        if (getLocalBoolean('useThumbnail') || document.hidden) {
+            audioPlayer.play().then(() => updateMediaSession(videoData));
 
-        if (document.hidden) {
-            videoPlayer.src = '';
-            console.warn("Started playing audio while hidden!");
-            return true;
+            if (document.hidden) {
+                videoPlayer.src = '';
+                console.warn("Started playing audio while hidden!");
+                return true;
+            }
+        } else {
+            const videoPlayed = await playVideoPlayer();
+            if (!videoPlayed) {return false;}
         }
-    } else {
-        const videoPlayed = await playVideoPlayer();
-        if (!videoPlayed) {return false;}
+
+        document.body.style.background = "black";
+
+        console.log("Loading was successful!");
+        return true;
+    } catch (error) {
+        return false;
     }
-
-    document.body.style.background = "black";
-
-    console.log("Loading was successful!");
-    return true;
 }
 
 async function loadVideoPlayer(videoData) {
