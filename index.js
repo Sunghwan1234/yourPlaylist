@@ -124,9 +124,9 @@ async function cacheVideo(videoId, videoUrl=null, audioUrl=null) {
     console.log("Caching id:",videoId," urls",videoUrl,audioUrl);
     if (audioUrl) {
         const audioCache = await caches.open("cached-audios");
+        const audioResponse = await fetch(audioUrl);
         if (audioResponse.ok) {
             await audioCache.put(videoId, audioResponse.clone());
-            responses.audioResponse = audioResponse;
         } else {
             return false;
         }
@@ -157,25 +157,6 @@ async function getCachedVideo(videoId) {
 async function getCachedAudio(videoId) {
     const cache = await caches.open("cached-audios");
     return await cache.match(videoId);
-}
-/**
- * do not use, move to cacheVideo
- * @param {} url 
- * @returns 
- */
-async function validateMedia(url) {
-    console.log("Validating ",url);
-    const res = await fetch(url);
-    const blob = await res.blob();
-
-    console.log("valMed: Stream size:", blob.size);
-
-    if (!res.ok || blob.size < 50000) {
-        // anything tiny is likely broken
-        return null;
-    }
-
-    return blob;
 }
 /**
  * fetch but with a catch and abort.
@@ -497,6 +478,7 @@ async function searchSimilarVideo(videoData) {
  * @param {string} videoId 
  * @param {object} videoData
  * @param {object} playlistVData
+ * @returns
  */
 async function loadVideoData(videoId, playlistVData={}) {
     console.log("LVD: Fetching",videoId);
@@ -534,49 +516,50 @@ async function loadVideoData(videoId, playlistVData={}) {
 async function loadFullVideo(videoId, playlistVData, forceLoad, forceSaveAsId=null) {
     console.log('LFV: Loading Video Data of',playlistVData.title,", fl,fs",forceLoad,forceSaveAsId);
     let saved_videoData = null;
-    let isVideoCached = false;
+    let cachedVideo = null;
     if (!forceLoad) {
         saved_videoData = JSON.parse(localStorage.getItem(videoId));
-        if (saved_videoData) {
-            const cachedVideo = await getCachedVideo(videoId);
-            if (cachedVideo) {
-                isVideoCached = true;
-                const blob = await cachedVideo.blob();
-                const videoUrl = URL.createObjectURL(blob);
-                let audioUrl = null;
-                if (saved_videoData.pipeline == "cobalt") {
-                    
-                } else {
-                    const cachedAudio = await getCachedAudio(videoId);
-                    const blob = await cachedAudio.blob();
-                    audioUrl = URL.createObjectURL(blob);
-                }
-                console.log(`LFD: Found saved videoData:`,saved_videoData);
-                console.log(`LFD: Found cached video:`,cachedVideo);
-                return passFullVideo(videoUrl, audioUrl, saved_videoData, playlistVData);
-            }
-        }
-    }
-    const videoData = await loadVideoData(videoId, playlistVData);
-    if (!videoData) {
-        console.warn("LFV: LVD Failed.");
-        return null;
-    }
-    console.log("LFV: Loaded videoData:",videoData);
 
-    // TODO: HERE
-    
-    if ((!forceLoad && !saved_videoData) || forceSaveAsId) { // maybe () around !saved_video || saveTo
-        console.log("LFV: Saving fullVideo:",videoData);
+        cachedVideo = await getCachedVideo(videoId);
+    }
+    if (!(saved_videoData || cachedVideo)) {
+        const videoData = await loadVideoData(videoId, playlistVData);
+        if (!videoData) {
+            console.warn("LFV: LVD Failed.");
+            return null;
+        }
+        cachedVideo = await getCachedVideo(videoId);
+        if (!cachedVideo) {
+            console.warn("LFV: no cachd video even though loaded",videoData);
+            return null;
+        }
+        console.log("LFV: Saving videoData:",videoData);
         let savingVideoId = videoId;
         if (forceSaveAsId) {
             console.log("LFV: Overwriting saved video to alternative:",videoData.title);
             savingVideoId = forceSaveAsId;
         }
         localStorage.setItem(savingVideoId, JSON.stringify(videoData.videoData || videoData.playlistVData));
-    } else {
     }
-    return videoData;
+
+    if (cachedVideo) {
+        const blob = await cachedVideo.blob();
+        const videoUrl = URL.createObjectURL(blob);
+        let audioUrl = null;
+        if (saved_videoData.pipeline == "cobalt") {
+            
+        } else {
+            const cachedAudio = await getCachedAudio(videoId);
+            const blob = await cachedAudio.blob();
+            audioUrl = URL.createObjectURL(blob);
+        }
+        console.log(`LFD: Found saved videoData:`,saved_videoData);
+        console.log(`LFD: Found cached video:`,cachedVideo);
+        return passFullVideo(videoUrl, audioUrl, saved_videoData, playlistVData);
+    } else {
+        console.error("No cached video for",videoId);
+    }
+    return null;
 }
 /**
  * loads a video
@@ -638,20 +621,19 @@ async function loadVideoIndex(videoIndex, forceLoad=getLocalBoolean('forceLoad')
  */
 async function loadPlayer(fullVideo) {
     console.log("LP: Loading fullVideo:",fullVideo);
-    const videoUrl = fullVideo.videoUrl;
-    const audioUrl = fullVideo.audioUrl;
-    const thumbnailUrl = fullVideo.videoData?.thumbnails?.[0]?.url || fullVideo.playlistVData?.thumbnails?.[0]?.url || '';
-
-    videoPlayer.pause();
-    videoPlayer.hidden = getLocalBoolean('useThumbnail');
-    audioPlayer.currentTime = 0;
-    audioPlayer.src = audioUrl;
+    // TODO: HERE
     const response = await getCachedVideo(fullVideo.playlistVData.url);
     const blob = await response.blob();
     if (!blob) {
         console.warn("LP: Blob is null");
         return false;
     }
+    const thumbnailUrl = fullVideo.videoData?.thumbnails?.[0]?.url || fullVideo.playlistVData?.thumbnails?.[0]?.url || '';
+
+    videoPlayer.pause();
+    videoPlayer.hidden = getLocalBoolean('useThumbnail');
+    audioPlayer.currentTime = 0;
+    audioPlayer.src = audioUrl;
 
     const successfulLoad = await loadVideoPlayer(blob, fullVideo);
     if (getLocalBoolean('useThumbnail') || document.hidden) {
