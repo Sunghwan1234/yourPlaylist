@@ -105,41 +105,23 @@ const passFullVideo = (videoResponse, audioResponse=null, videoData=null, playli
         author: author,
     }
 }
+function passVideoData(videoId, videoData, playlistVData=null) {
+    const title = videoData?.title || playlistVData?.title || 'title not found';
+    const author = videoData?.author || playlistVData?.author || 'author not found';
+    return {
+        id: videoId,
+        title: title,
+        author: author,
+        videoData: videoData,
+        playlistVData: playlistVData,
+    }
+}
 
 function getLocalBoolean(setting) {
     return localStorage.getItem("s_"+setting)=='true';
 }
-async function fetchUrls(videoUrl, audioUrl=null) {
-    let responses = {
-        videoResponse: null,
-        audioResponse: null,
-    };
-    if (audioUrl) {
-        const audioResponse = await fetch(audioUrl);
-        if (audioResponse.ok) {
-            responses.audioResponse = audioResponse;
-        } else {
-            return false;
-        }
-    }
-    if (videoUrl) {
-        const videoResponse = await fetch(videoUrl);
-        if (videoResponse.ok) {
-            responses.videoResponse = videoResponse;
-        } else {
-            return false;
-        }
-    }
-    return responses;
-}
-/**
- * caches responses. Make sure to use .clone()
- * @param {*} videoId 
- * @param {*} videoResponse 
- * @param {*} audioResponse
- * @returns responses object: .videoResponse and .audioResponse
- */
-async function cacheVideo(videoId, videoResponse=null, audioResponse=null) {
+async function cacheVideo(videoId, videoUrl=null, audioUrl=null) {
+    console.log("Caching id:",videoId," urls",videoUrl,audioUrl);
     if (audioUrl) {
         const audioCache = await caches.open("cached-audios");
         if (audioResponse.ok) {
@@ -151,17 +133,19 @@ async function cacheVideo(videoId, videoResponse=null, audioResponse=null) {
     }
     if (videoUrl) {
         const cache = await caches.open("cached-videos");
-        if (videoResponse.ok) {
-            await cache.put(videoId, videoResponse.clone());
-            responses.videoResponse = videoResponse;
-        } else {
+        const response = await fetch(videoUrl);
+        const blob = await response.blob();
+        if (!response.ok || blob.size<50000) {
+            console.log("cacheVideo: blob from",videoUrl,"is not ok");
             return false;
         }
+        await cache.put(videoId, response.clone());
+        return true;
     }
     return true;
 }
 /**
- * Returns a response. Get the blob using .blob()
+ * use .blob() on this to get the media
  * @param {*} videoId 
  * @returns 
  */
@@ -174,8 +158,13 @@ async function getCachedAudio(videoId) {
     const cache = await caches.open("cached-audios");
     return await cache.match(videoId);
 }
-
-async function returnBlob(url) {
+/**
+ * do not use, move to cacheVideo
+ * @param {} url 
+ * @returns 
+ */
+async function validateMedia(url) {
+    console.log("Validating ",url);
     const res = await fetch(url);
     const blob = await res.blob();
 
@@ -274,10 +263,16 @@ async function fetchVideo(videoId, proxy=null) {
         let targetUrl = wrapInvidious(domain,videoId);
         if (proxy) {targetUrl=addCors_Proxy(proxy,targetUrl);}
         const data = await fetchWithCatch(targetUrl);
-        if (data) {
-            const parsedData = parseVideoData(data, "invidious",videoId);
-            return passFullVideo()
-        }
+        if (!data) {continue;}
+        const parsedData = parseVideoData(data, "invidious",videoId);
+        const formats = { // +1 for webm
+            r144p: 0, r240p: 2, r360p: 4, r480p: 8,
+            r720p: 10, r1080p: 12
+        }; // TODO: TEST TS
+        const videoUrl = parsedData.videoStreams[formats.r480p+1].url; // 480p
+        const audioUrl = parsedData.audioStreams[3].url;
+        if (!await cacheVideo(videoId, videoUrl, audioUrl)) {continue;}
+        return parsedData;
     }
     return null;
 }
@@ -309,10 +304,11 @@ async function fetchProxiedPipedVideo(videoId) {
  * https://github.com/imputnet/cobalt/blob/main/docs/api.md
  * @param {*} videoId 
  * @param {*} proxy 
- * @returns the json return
+ * @returns the blob.
  */
 async function fetchCobaltVideo(videoId, proxy=null) {
     for (const domain of COBALT_INSTANCES) {
+        console.log("fCobalt: domain",domain)
         const body = {
             url: `https://youtube.com/watch?v=${videoId}`,
             //vQuality: settings.videoQuality,
@@ -323,11 +319,15 @@ async function fetchCobaltVideo(videoId, proxy=null) {
                 'Accept': 'application/json',
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify(body)
+            body: JSON.stringify(body),
+            signal: null
         });
-        if (!data || data.status === "error") {continue;}
-        if (!data.url) {continue;}
-        if (await returnBlob)
+        if (!data || data.status === "error" || 
+            !data.url) {continue;}
+        if (!await cacheVideo(videoId, data.url)) {
+            console.warn("fCobalt: Domain",domain,"url is null");
+            continue;
+        }
         console.log("fCobalt: Domain",domain,"Returned:",data);
         return data;
     }
@@ -519,15 +519,9 @@ async function loadVideoData(videoId, playlistVData={}) {
     if (pipeline=="cobalt") {
         if (!playlistVData) {playlistVData = {};}
         playlistVData.pipeline = "cobalt";
-        return passFullVideo(video.url,null,playlistVData,playlistVData);
+        return passVideoData(videoId, playlistVData, playlistVData);
     } else {
-        const formats = { // +1 for webm
-            r144p: 0, r240p: 2, r360p: 4, r480p: 8,
-            r720p: 10, r1080p: 12
-        }; // TODO: TEST TS
-        const videoUrl = video.videoStreams[formats.r480p+1].url; // 480p
-        const audioUrl = video.audioStreams[3].url;
-        return passFullVideo(videoUrl, audioUrl, video, playlistVData);
+        return passVideoData(videoId, video, playlistVData);
     }
 }
 /**
@@ -550,7 +544,7 @@ async function loadFullVideo(videoId, playlistVData, forceLoad, forceSaveAsId=nu
                 const blob = await cachedVideo.blob();
                 const videoUrl = URL.createObjectURL(blob);
                 let audioUrl = null;
-                if (saved_videoData.pipeline = "cobalt") {
+                if (saved_videoData.pipeline == "cobalt") {
                     
                 } else {
                     const cachedAudio = await getCachedAudio(videoId);
@@ -559,32 +553,30 @@ async function loadFullVideo(videoId, playlistVData, forceLoad, forceSaveAsId=nu
                 }
                 console.log(`LFD: Found saved videoData:`,saved_videoData);
                 console.log(`LFD: Found cached video:`,cachedVideo);
-                return passFullVideo(videoUrl, audioUrl, saved_videoData. playlistVData);
+                return passFullVideo(videoUrl, audioUrl, saved_videoData, playlistVData);
             }
         }
     }
-    const fullVideo = await loadVideoData(videoId, playlistVData);
-    if (!fullVideo) {
+    const videoData = await loadVideoData(videoId, playlistVData);
+    if (!videoData) {
         console.warn("LFV: LVD Failed.");
         return null;
     }
-    console.log("LFV: Loaded full video:",fullVideo);
+    console.log("LFV: Loaded videoData:",videoData);
+
+    // TODO: HERE
     
     if ((!forceLoad && !saved_videoData) || forceSaveAsId) { // maybe () around !saved_video || saveTo
-        console.log("LFV: Saving fullVideo:",fullVideo);
+        console.log("LFV: Saving fullVideo:",videoData);
+        let savingVideoId = videoId;
         if (forceSaveAsId) {
-            console.log("LFV: Overwriting saved video to alternative:",fullVideo.title);
-            videoId = forceSaveAsId;
+            console.log("LFV: Overwriting saved video to alternative:",videoData.title);
+            savingVideoId = forceSaveAsId;
         }
-        cacheVideo(videoId, fullVideo.videoUrl, fullVideo.audioUrl);
-        localStorage.setItem(videoId, JSON.stringify(fullVideo.videoData || fullVideo.playlistVData));
+        localStorage.setItem(savingVideoId, JSON.stringify(videoData.videoData || videoData.playlistVData));
     } else {
-        if (!isVideoCached) {
-            console.log("LFV: Caching fullVideo:",fullVideo);
-            cacheVideo(videoId, fullVideo.videoUrl, fullVideo.audioUrl);
-        }
     }
-    return fullVideo;
+    return videoData;
 }
 /**
  * loads a video
@@ -654,14 +646,14 @@ async function loadPlayer(fullVideo) {
     videoPlayer.hidden = getLocalBoolean('useThumbnail');
     audioPlayer.currentTime = 0;
     audioPlayer.src = audioUrl;
-
-    const blob = await returnBlob(videoUrl);
+    const response = await getCachedVideo(fullVideo.playlistVData.url);
+    const blob = await response.blob();
     if (!blob) {
         console.warn("LP: Blob is null");
         return false;
     }
 
-    const successfulLoad = await loadVideoPlayer(fullVideo);
+    const successfulLoad = await loadVideoPlayer(blob, fullVideo);
     if (getLocalBoolean('useThumbnail') || document.hidden) {
         if (audioUrl) {
             audioPlayer.play().then(() => updateMediaSession(videoData));
@@ -682,7 +674,7 @@ async function loadPlayer(fullVideo) {
     return true;
 }
 
-async function loadVideoPlayer(fullVideo) {
+async function loadVideoPlayer(blob, fullVideo) {
     document.getElementById("video_name").textContent = fullVideo.title;
     document.getElementById("video_author").textContent = fullVideo.author;
 
@@ -690,7 +682,6 @@ async function loadVideoPlayer(fullVideo) {
         thumbnail.src = fullVideo.videoData.thumbnails[0].url;
     } else {
         console.log("loadVideoPlayer: Loading Video URL:", fullVideo.videoUrl);
-        const blob = await returnBlob(fullVideo.videoUrl);
         videoPlayer.src = URL.createObjectURL(blob);
         await videoPlayer.load();
     }
@@ -768,7 +759,7 @@ function togglePlaylistContainer() {
 }
 
 async function init() {
-    loadPlaylist();
+    await loadPlaylist();
     showPlaylist();
 }
 async function loadPlaylist(playlistId=temp_playlistAddress, forceLoad=getLocalBoolean('forceLoad')) {
