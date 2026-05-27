@@ -121,7 +121,7 @@ function getLocalBoolean(setting) {
     return localStorage.getItem("s_"+setting)=='true';
 }
 async function cacheVideo(videoId, videoUrl=null, audioUrl=null) {
-    console.log("Caching id:",videoId," urls",videoUrl,audioUrl);
+    console.log("Caching id:",videoId,"urls",videoUrl,audioUrl);
     if (audioUrl) {
         const audioCache = await caches.open("cached-audios");
         const audioResponse = await fetch(audioUrl);
@@ -132,14 +132,19 @@ async function cacheVideo(videoId, videoUrl=null, audioUrl=null) {
         }
     }
     if (videoUrl) {
+        // TODO: CHECK if ok?
         const cache = await caches.open("cached-videos");
         const response = await fetch(videoUrl);
-        const blob = await response.blob();
-        if (!response.ok || blob.size<50000) {
-            console.log("cacheVideo: blob from",videoUrl,"is not ok");
+        if (!response.ok) {
+            console.warn("cacheVideo: response !ok",response);
             return false;
         }
         await cache.put(videoId, response.clone());
+        const blob = await response.blob();
+        if (blob.size<50000) {
+            console.warn("cacheVideo: blob bad:",blob);
+            return false;
+        }
         return true;
     }
     return true;
@@ -303,6 +308,7 @@ async function fetchCobaltVideo(videoId, proxy=null) {
             body: JSON.stringify(body),
             signal: null
         });
+        console.log("fCobalt: got",data);
         if (!data || data.status === "error" || 
             !data.url) {continue;}
         if (!await cacheVideo(videoId, data.url)) {
@@ -522,7 +528,7 @@ async function loadFullVideo(videoId, playlistVData, forceLoad, forceSaveAsId=nu
 
         cachedVideo = await getCachedVideo(videoId);
     }
-    if (!(saved_videoData || cachedVideo)) {
+    if (!cachedVideo || !saved_videoData) {
         const videoData = await loadVideoData(videoId, playlistVData);
         if (!videoData) {
             console.warn("LFV: LVD Failed.");
@@ -746,18 +752,20 @@ async function init() {
 }
 async function loadPlaylist(playlistId=temp_playlistAddress, forceLoad=getLocalBoolean('forceLoad')) {
     const saved_playlist = JSON.parse(localStorage.getItem('playlist'));
-    if (saved_playlist && saved_playlist.videos.length>0 && !forceLoad) {
-        console.log("Loaded saved playlist!");
+    
+    if (saved_playlist && saved_playlist.videos.length>0) {
         playlist = saved_playlist;
-    } else {
+    }
+    if (forceLoad) {
         console.log("Force Loading playlist...");
         playlist = await fetchPlaylistData(playlistId);
         if (playlist && playlist.videos.length>0) {
             localStorage.setItem('playlist', JSON.stringify(playlist));
             console.log("Saved Playlist!");
         } else {
-            console.warn("Could not load playlist from Invidious.");
+            console.warn("Could not load playlist from Invidious. Reverting to old.");
             window.alert("Error: Could not load playlist from Invidious.");
+            playlist = saved_playlist;
         }
     }
 }
