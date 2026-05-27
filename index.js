@@ -139,12 +139,12 @@ async function cacheVideo(videoId, videoUrl=null, audioUrl=null) {
             console.warn("cacheVideo: response !ok",response);
             return false;
         }
-        await cache.put(videoId, response.clone());
         const blob = await response.blob();
         if (blob.size<50000) {
             console.warn("cacheVideo: blob bad:",blob);
             return false;
         }
+        await cache.put(videoId, new Response(blob, {headers: response.headers}));
         return true;
     }
     return true;
