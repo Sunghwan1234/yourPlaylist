@@ -87,18 +87,18 @@ const settings = {
 navigator.storage.persist();
 /**
  * 
- * @param {string} videoResponse 
- * @param {string} audioResponse 
+ * @param {string} videoUrl 
+ * @param {string} audioUrl 
  * @param {object} videoData 
  * @param {object} playlistVData 
  * @returns fullVideo
  */
-const passFullVideo = (videoResponse, audioResponse=null, videoData=null, playlistVData=null) => {
+function passFullVideo(videoUrl, audioUrl=null, videoData=null, playlistVData=null) {
     const title = videoData?.title || playlistVData?.title || 'title not found';
     const author = videoData?.author || playlistVData?.author || 'author not found';
     return {
-        videoResponse: videoResponse,
-        audioResponse: audioResponse,
+        videoUrl: videoUrl,
+        audioUrl: audioUrl,
         videoData: videoData,
         playlistVData: playlistVData,
         title: title,
@@ -120,31 +120,44 @@ function passVideoData(videoId, videoData, playlistVData=null) {
 function getLocalBoolean(setting) {
     return localStorage.getItem("s_"+setting)=='true';
 }
+/**
+ * If the blob size is 0, that is because of YouTube, not Cobalt.
+ * @param {*} videoId 
+ * @param {*} videoUrl 
+ * @param {*} audioUrl 
+ * @returns 
+ */
 async function cacheVideo(videoId, videoUrl=null, audioUrl=null) {
-    console.log("Caching id:",videoId,"urls",videoUrl,audioUrl);
+    console.log("cache: Caching id:",videoId,"urls",videoUrl,audioUrl);
     if (audioUrl) {
         const audioCache = await caches.open("cached-audios");
         const audioResponse = await fetch(audioUrl);
-        if (audioResponse.ok) {
+        const blob = await audioResponse.blob();
+        if (audioResponse.ok && blob.size>50000) {
             await audioCache.put(videoId, audioResponse.clone());
         } else {
+            console.warn("cache: !ok/blob:",audioResponse,blob);
             return false;
         }
     }
     if (videoUrl) {
-        // TODO: CHECK if ok?
         const cache = await caches.open("cached-videos");
         const response = await fetch(videoUrl);
         if (!response.ok) {
-            console.warn("cacheVideo: response !ok",response);
+            console.warn("cache: response !ok",response);
             return false;
         }
+        const responseClone = response.clone();
         const blob = await response.blob();
-        if (blob.size<50000) {
-            console.warn("cacheVideo: blob bad:",blob);
+        if (blob.size==0) {
+            console.warn("cache: Youtube Rate Limited.");
+            return false;
+        } else if (blob.size<50000) {
+            console.warn("cache: Malformed blob:",blob);
             return false;
         }
         await cache.put(videoId, new Response(blob, {headers: response.headers}));
+        console.log("cache: Caching Success!");
         return true;
     }
     return true;
@@ -308,7 +321,6 @@ async function fetchCobaltVideo(videoId, proxy=null) {
             body: JSON.stringify(body),
             signal: null
         });
-        console.log("fCobalt: got",data);
         if (!data || data.status === "error" || 
             !data.url) {continue;}
         if (!await cacheVideo(videoId, data.url)) {
@@ -552,7 +564,7 @@ async function loadFullVideo(videoId, playlistVData, forceLoad, forceSaveAsId=nu
         const blob = await cachedVideo.blob();
         const videoUrl = URL.createObjectURL(blob);
         let audioUrl = null;
-        if (saved_videoData.pipeline == "cobalt") {
+        if (saved_videoData.pipeline || "" == "cobalt") { // TODO: FIX HERE
             
         } else {
             const cachedAudio = await getCachedAudio(videoId);
@@ -628,12 +640,8 @@ async function loadVideoIndex(videoIndex, forceLoad=getLocalBoolean('forceLoad')
 async function loadPlayer(fullVideo) {
     console.log("LP: Loading fullVideo:",fullVideo);
     // TODO: HERE
-    const response = await getCachedVideo(fullVideo.playlistVData.url);
-    const blob = await response.blob();
-    if (!blob) {
-        console.warn("LP: Blob is null");
-        return false;
-    }
+    const videoUrl = fullVideo.videoUrl;
+    const audioUrl = fullVideo.audioUrl;
     const thumbnailUrl = fullVideo.videoData?.thumbnails?.[0]?.url || fullVideo.playlistVData?.thumbnails?.[0]?.url || '';
 
     videoPlayer.pause();
@@ -641,7 +649,12 @@ async function loadPlayer(fullVideo) {
     audioPlayer.currentTime = 0;
     audioPlayer.src = audioUrl;
 
-    const successfulLoad = await loadVideoPlayer(blob, fullVideo);
+    const successfulLoad = await loadVideoPlayer(
+        fullVideo.title,
+        fullVideo.author,
+        thumbnailUrl,
+        videoUrl,
+    );
     if (getLocalBoolean('useThumbnail') || document.hidden) {
         if (audioUrl) {
             audioPlayer.play().then(() => updateMediaSession(videoData));
@@ -659,20 +672,27 @@ async function loadPlayer(fullVideo) {
     document.body.style.background = "black";
 
     console.log("Loading was successful!");
-    return true;
+    return successfulLoad;
 }
-
-async function loadVideoPlayer(blob, fullVideo) {
-    document.getElementById("video_name").textContent = fullVideo.title;
-    document.getElementById("video_author").textContent = fullVideo.author;
+/**
+ * 
+ * @param {*} title 
+ * @param {*} author 
+ * @param {*} thumbnail 
+ * @param {*} videoUrl 
+ */
+async function loadVideoPlayer(title, author, thumbnail, videoUrl) {
+    document.getElementById("video_name").textContent = title;
+    document.getElementById("video_author").textContent = author;
 
     if (getLocalBoolean('useThumbnail')) {
-        thumbnail.src = fullVideo.videoData.thumbnails[0].url;
+        thumbnail.src = thumbnail;
     } else {
-        console.log("loadVideoPlayer: Loading Video URL:", fullVideo.videoUrl);
-        videoPlayer.src = URL.createObjectURL(blob);
+        console.log("loadVideoPlayer: Loading Video");
+        videoPlayer.src = videoUrl;
         await videoPlayer.load();
     }
+    return true;
 }
 async function playVideoPlayer() {
     const videoPlayed = await videoPlayer.play().catch((error) => {
@@ -855,7 +875,7 @@ async function initVideoEventListeners() {
                     });
                 }
                 unsynced = false;
-            } else if (audioPlayer.src && !audioPlayer.paused) { // Video is loaded
+            } else if (currentVideo.audioUrl && !audioPlayer.paused) { // Video is loaded
                 videoPlayer.currentTime = audioPlayer.currentTime;
             }
         }
