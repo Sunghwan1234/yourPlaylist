@@ -73,7 +73,7 @@ function addCors_Proxy(cors_proxy, url) {
 let temp_playlistAddress = "PLXPg0M1hQSff6jP8XGSDSsyf4lDdTfOXT";
 
 let playlist; // PlaylistData
-let currentVideo; // VideoData
+let currentVideo = null; // VideoData
 let currentVideoIndex=0;
 let backgroundPlaybackStatus = false;
 let unsynced = false;
@@ -564,12 +564,12 @@ async function loadFullVideo(videoId, playlistVData, forceLoad, forceSaveAsId=nu
         const blob = await cachedVideo.blob();
         const videoUrl = URL.createObjectURL(blob);
         let audioUrl = null;
-        if (saved_videoData.pipeline || "" == "cobalt") { // TODO: FIX HERE
-            
-        } else {
+        if (saved_videoData.pipeline || "" !== "cobalt") {
             const cachedAudio = await getCachedAudio(videoId);
-            const blob = await cachedAudio.blob();
-            audioUrl = URL.createObjectURL(blob);
+            if (cachedAudio) {
+                const audioBlob = await cachedAudio.blob();
+                audioUrl = URL.createObjectURL(audioBlob);
+            }
         }
         console.log(`LFD: Found saved videoData:`,saved_videoData);
         console.log(`LFD: Found cached video:`,cachedVideo);
@@ -808,7 +808,7 @@ async function initVideoEventListeners() {
             backgroundPlaybackStatus = false;
             },100);
         } else {
-            if (currentVideo.audioUrl && audioPlayer.paused) {
+            if (currentVideo?.audioUrl || false && audioPlayer.paused) {
                 videoPlayer.currentTime = audioPlayer.currentTime;
                 audioPlayer.play().then(()=>{updateMediaSession(currentVideo)});
                 audioPlayer.muted = false;
@@ -821,7 +821,7 @@ async function initVideoEventListeners() {
             backgroundPlaybackStatus = true;
         } else {
             updateMediaSession(currentVideo);
-            if (currentVideo.audioUrl) {
+            if (currentVideo?.audioUrl) {
                 audioPlayer.pause()
             
                 audioPlayer.muted = true;
@@ -833,7 +833,7 @@ async function initVideoEventListeners() {
         console.log("seek");
         if (!backgroundPlaybackStatus) {
             isSeeking = true;
-            if (currentVideo.audioUrl) {
+            if (currentVideo?.audioUrl) {
                 audioPlayer.currentTime = videoPlayer.currentTime;
             }
             updateMediaSession(currentVideo);
@@ -843,7 +843,7 @@ async function initVideoEventListeners() {
         console.log("seeked");
         if (!backgroundPlaybackStatus) {
             updateMediaSession(currentVideo);
-            if (currentVideo.audioUrl) {
+            if (currentVideo?.audioUrl) {
                 audioPlayer.muted = false;
             }
             setTimeout(()=>{isSeeking=false;}, 10);
@@ -862,12 +862,12 @@ async function initVideoEventListeners() {
             if (unsynced) { // video did not load in background?
                 if (currentVideo) {
                     await loadVideoPlayer(currentVideo);
-                    if (currentVideo.audioUrl) {
+                    if (currentVideo?.audioUrl) {
                         audioPlayer.muted = true;
                     }
                     videoPlayer.addEventListener('loadedmetadata', function syncOnLoad() {
                         videoPlayer.currentTime = audioPlayer.currentTime;
-                        if (currentVideo.audioUrl && !audioPlayer.paused) {
+                        if (currentVideo?.audioUrl && !audioPlayer.paused) {
                             audioPlayer.muted = false;
                             playVideoPlayer();
                         }
@@ -875,7 +875,7 @@ async function initVideoEventListeners() {
                     });
                 }
                 unsynced = false;
-            } else if (currentVideo.audioUrl && !audioPlayer.paused) { // Video is loaded
+            } else if (currentVideo?.audioUrl && !audioPlayer.paused) { // Video is loaded
                 videoPlayer.currentTime = audioPlayer.currentTime;
             }
         }
