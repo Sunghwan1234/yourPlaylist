@@ -652,7 +652,7 @@ async function loadPlayer(fullVideo) {
     videoPlayer.pause();
     videoPlayer.hidden = getLocalBoolean('useThumbnail');
     audioPlayer.currentTime = 0;
-    audioPlayer.src = audioUrl;
+    audioPlayer.src = audioUrl ?? '';
 
     const successfulLoad = await loadVideoPlayer(
         fullVideo.title,
@@ -854,7 +854,6 @@ async function initVideoEventListeners() {
             setTimeout(()=>{isSeeking=false;}, 10);
         }
     });
-
     audioPlayer.addEventListener('ended', () => {
         videoPlayer.pause();
         if (document.hidden) {
@@ -867,11 +866,11 @@ async function initVideoEventListeners() {
             if (unsynced) { // video did not load in background?
                 if (currentVideo) {
                     await loadVideoPlayer(currentVideo);
-                    if (currentVideo?.audioUrl) {
+                    if (currentVideo?.audioUrl ?? false) {
                         audioPlayer.muted = true;
                     }
                     videoPlayer.addEventListener('loadedmetadata', function syncOnLoad() {
-                        videoPlayer.currentTime = audioPlayer.currentTime;
+                        videoPlayer.currentTime = audioPlayer?.currentTime;
                         if ((currentVideo?.audioUrl ?? false) && !audioPlayer.paused) {
                             audioPlayer.muted = false;
                             playVideoPlayer();
@@ -880,7 +879,7 @@ async function initVideoEventListeners() {
                     });
                 }
                 unsynced = false;
-            } else if ((currentVideo?.audioUrl ?? false) && !audioPlayer.paused) { // Video is loaded
+            } else if ((currentVideo?.audioUrl ?? false) && !audioPlayer?.paused) { // Video is loaded
                 videoPlayer.currentTime = audioPlayer.currentTime;
             }
         }

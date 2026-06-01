@@ -10,6 +10,9 @@ button {
     border-radius: 5px;
     z-index: 2;
 }
+span {
+    font-size: 10px;
+}
 .box {
     display: flex;
 }

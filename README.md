@@ -11,7 +11,8 @@
 
 <h2>This website uses:</h2>
 <ul>
-  <li>Inviduous API to fetch YouTube data</li>
+  <li>Inviduous, Piped, and Cobalt APIs to fetch YouTube data</li>
   <li>Javascript with Fetch API</li>
-  <l1>Some AI to help me learn new code</l1>
+  <li>LocalStorage and Cache to store data</li>
+  <l1>Some AIs helping me learn new code</l1>
 </ul>
