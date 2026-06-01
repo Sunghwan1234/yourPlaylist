@@ -20,7 +20,7 @@ const INVIDIOUS_INSTANCES = [
     "inv.thepixora.com",
 ];
 const INVIDIOUS_API_INSTANCES = [
-    "inv.thepixora.com"
+    //"inv.thepixora.com"
 ];
 const wrapInvidious = (domain,vId)=>{return `https://${domain}/api/v1/videos/${vId}`;}
 /**
@@ -650,7 +650,6 @@ async function loadVideoIndex(videoIndex, forceLoad=getLocalBoolean('forceLoad')
  */
 async function loadPlayer(fullVideo) {
     console.log("LP: Loading fullVideo:",fullVideo);
-    // TODO: HERE
     const videoUrl = fullVideo.videoUrl;
     const audioUrl = fullVideo.audioUrl;
     const thumbnailUrl = fullVideo.videoData?.thumbnails?.[0]?.url || fullVideo.playlistVData?.thumbnails?.[0]?.url || '';
@@ -677,7 +676,7 @@ async function loadPlayer(fullVideo) {
         }
 
         document.body.style.background = "black";
-
+    }
     console.log("Loading was successful!");
     return successfulLoad;
 }
