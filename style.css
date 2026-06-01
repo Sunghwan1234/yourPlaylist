@@ -10,6 +10,9 @@ button {
     border-radius: 5px;
     z-index: 2;
 }
+span {
+    font-size: 10px;
+}
 .box {
     display: flex;
 }
@@ -214,4 +217,8 @@ button {
 #s_settingsPanel > input p {
     display: inline;
     font-size: 16px;
+}
+#s_settingsPanel > button:hover {
+    transition: all 0.5s;
+    background-color: whitesmoke;
 }

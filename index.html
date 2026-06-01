@@ -11,10 +11,13 @@
 <body>
     <button id="settings" onclick="toggleSettingsPanel()">⛭</button>
     <div hidden id="s_settingsPanel">
-        <p>Settings</p>
-        <p><input id="s_useThumbnail" type="checkbox">Use Thumbnail for Video</p>
+        <p>Playback Settings</p>
+        <p><input id="s_useThumbnail" type="checkbox">Use Thumbnail for Video<span>(Does not work for Cobalt)</span></p>
+        <p>Control Panel</p>
         <p><input id="s_forceLoad" type="checkbox">Force Load</p>
         <p><input id="s_forceSave" type="checkbox">Force Save (With Force Load)</p>
+        <p>Controls</p>
+        <button onclick="forceLoadPlaylist()">Reload Playlist</button>
     </div>
     <div class="box">
         <div id="absolute">
