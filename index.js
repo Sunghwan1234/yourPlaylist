@@ -57,12 +57,16 @@ async function fetchCobaltDirectory() {
 /**
  * https://www.whateverorigin.org/
  * https://allorigins.win/
+ * https://github.com/Freeboard/thingproxy
+ * https://codetabs.com/cors-proxy/cors-proxy.html
  * https://cors.lol/#getStarted
  * https://github.com/Eiledon/alloworigin
  */
 const CORS_PROXIES = [
     //"corsproxy.io/?url=",
     //"proxy.corsfix.com/?", // Must signup
+    // "thingproxy.freeboard.io/fetch/", // 10r/s
+    "api.codetabs.com/v1/proxy?quest=", // 5r/s slow
     //"api.allorigins.win/raw?url=", // slow
     //"whateverorigin.org/get?url=", // 20r/s 500(ServerError)
     "api.cors.lol/?url=", // FileLimit20mb and slow
@@ -208,6 +212,8 @@ async function fetchWithCatch(targetUrl, method={}) {
     } finally {
         clearTimeout(timeoutId);
     }
+    console.warn("Unknown error");
+    return null;
 }
 /**
  * https://docs.invidious.io/api/#get-apiv1playlistsplid
@@ -669,12 +675,8 @@ async function loadPlayer(fullVideo) {
             console.warn("Started playing audio while hidden!");
             return true;
         }
-    } else {
-        const videoPlayed = await playVideoPlayer();
-        if (!videoPlayed) {return false;}
-    }
 
-    document.body.style.background = "black";
+        document.body.style.background = "black";
 
     console.log("Loading was successful!");
     return successfulLoad;
