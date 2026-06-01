@@ -9,7 +9,9 @@ audioPlayer.preload = "auto";
 const thumbnail = document.getElementById("thumbnail");
 
 const settingsPanel = document.getElementById("s_settingsPanel");
-
+/**
+ * https://api.invidious.io/
+ */
 const INVIDIOUS_INSTANCES = [
     "inv.nadeko.net", // Endpoint Disabled
     "yt.chocolatemoo53.com",
@@ -18,7 +20,7 @@ const INVIDIOUS_INSTANCES = [
     "inv.thepixora.com",
 ];
 const INVIDIOUS_API_INSTANCES = [
-    //"inv.thepixora.com"
+    "inv.thepixora.com"
 ];
 const wrapInvidious = (domain,vId)=>{return `https://${domain}/api/v1/videos/${vId}`;}
 /**
@@ -49,7 +51,7 @@ async function fetchCobaltDirectory() {
     const response = await fetchWithCatch(COBALT_DIRECTORY);
     if (response) {
         COBALT_INSTANCES = response.data.youtube;
-        console.log(COBALT_INSTANCES);
+        console.log("Cobalt Instances",COBALT_INSTANCES);
     }
 }
 /**
@@ -113,7 +115,7 @@ function passVideoData(videoId, videoData, playlistVData=null) {
         title: title,
         author: author,
         videoData: videoData,
-        playlistVData: playlistVData,
+        playlistVData: playlistVData
     }
 }
 
@@ -193,6 +195,7 @@ async function fetchWithCatch(targetUrl, method={}) {
         const json = await response.json();
         if (!response.ok) {
             console.warn("Response not ok:",response.status, json);
+            return null;
         }
         return json;
     } catch (error) {
@@ -247,6 +250,7 @@ async function fetchPlaylistData(playlistId) {
             authorThumbnail: '',
             description: data.description,
             videos: videoData,
+            date: Date.now()/1000,
         };
         console.log(`Successfully imported ${videoData.length} videos from ${domain}`);
         console.log(playlistData);
@@ -558,13 +562,14 @@ async function loadFullVideo(videoId, playlistVData, forceLoad, forceSaveAsId=nu
             savingVideoId = forceSaveAsId;
         }
         localStorage.setItem(savingVideoId, JSON.stringify(videoData.videoData || videoData.playlistVData));
+        saved_videoData = JSON.parse(localStorage.getItem(videoId));
     }
 
     if (cachedVideo) {
         const blob = await cachedVideo.blob();
         const videoUrl = URL.createObjectURL(blob);
         let audioUrl = null;
-        if (saved_videoData.pipeline || "" !== "cobalt") {
+        if ((saved_videoData.pipeline ?? "cobalt") !== "cobalt") {
             const cachedAudio = await getCachedAudio(videoId);
             if (cachedAudio) {
                 const audioBlob = await cachedAudio.blob();
@@ -776,8 +781,8 @@ async function loadPlaylist(playlistId=temp_playlistAddress, forceLoad=getLocalB
     if (saved_playlist && saved_playlist.videos.length>0) {
         playlist = saved_playlist;
     }
-    if (forceLoad) {
-        console.log("Force Loading playlist...");
+    if (((saved_playlist?.date ?? 0) < (Date.now()/1000) - (60*60)) || forceLoad) {
+        console.log("Force Loading playlist...",forceLoad, Date.now()/1000);
         playlist = await fetchPlaylistData(playlistId);
         if (playlist && playlist.videos.length>0) {
             localStorage.setItem('playlist', JSON.stringify(playlist));
@@ -787,7 +792,7 @@ async function loadPlaylist(playlistId=temp_playlistAddress, forceLoad=getLocalB
             window.alert("Error: Could not load playlist from Invidious.");
             playlist = saved_playlist;
         }
-    }
+    } 
 }
 
 function checkAllInstances() {
@@ -808,7 +813,7 @@ async function initVideoEventListeners() {
             backgroundPlaybackStatus = false;
             },100);
         } else {
-            if (currentVideo?.audioUrl || false && audioPlayer.paused) {
+            if ((currentVideo?.audioUrl ?? false) && audioPlayer?.paused) {
                 videoPlayer.currentTime = audioPlayer.currentTime;
                 audioPlayer.play().then(()=>{updateMediaSession(currentVideo)});
                 audioPlayer.muted = false;
@@ -821,7 +826,7 @@ async function initVideoEventListeners() {
             backgroundPlaybackStatus = true;
         } else {
             updateMediaSession(currentVideo);
-            if (currentVideo?.audioUrl) {
+            if (currentVideo?.audioUrl ?? false) {
                 audioPlayer.pause()
             
                 audioPlayer.muted = true;
@@ -833,7 +838,7 @@ async function initVideoEventListeners() {
         console.log("seek");
         if (!backgroundPlaybackStatus) {
             isSeeking = true;
-            if (currentVideo?.audioUrl) {
+            if (currentVideo?.audioUrl ?? false) {
                 audioPlayer.currentTime = videoPlayer.currentTime;
             }
             updateMediaSession(currentVideo);
@@ -843,7 +848,7 @@ async function initVideoEventListeners() {
         console.log("seeked");
         if (!backgroundPlaybackStatus) {
             updateMediaSession(currentVideo);
-            if (currentVideo?.audioUrl) {
+            if (currentVideo?.audioUrl ?? false) {
                 audioPlayer.muted = false;
             }
             setTimeout(()=>{isSeeking=false;}, 10);
@@ -867,7 +872,7 @@ async function initVideoEventListeners() {
                     }
                     videoPlayer.addEventListener('loadedmetadata', function syncOnLoad() {
                         videoPlayer.currentTime = audioPlayer.currentTime;
-                        if (currentVideo?.audioUrl && !audioPlayer.paused) {
+                        if ((currentVideo?.audioUrl ?? false) && !audioPlayer.paused) {
                             audioPlayer.muted = false;
                             playVideoPlayer();
                         }
@@ -875,7 +880,7 @@ async function initVideoEventListeners() {
                     });
                 }
                 unsynced = false;
-            } else if (currentVideo?.audioUrl && !audioPlayer.paused) { // Video is loaded
+            } else if ((currentVideo?.audioUrl ?? false) && !audioPlayer.paused) { // Video is loaded
                 videoPlayer.currentTime = audioPlayer.currentTime;
             }
         }
