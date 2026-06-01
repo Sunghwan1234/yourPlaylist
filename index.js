@@ -674,11 +674,12 @@ async function loadPlayer(fullVideo) {
             console.warn("Started playing audio while hidden!");
             return true;
         }
-
-        document.body.style.background = "black";
     }
+    document.body.style.background = "black";
     console.log("Loading was successful!");
-    return successfulLoad;
+    if (successfulLoad && !document.hidden) {
+        return playVideoPlayer();
+    }
 }
 /**
  * 
@@ -861,6 +862,15 @@ async function initVideoEventListeners() {
             unsynced = true;
         }
         track(1);
+    });
+    videoPlayer.addEventListener('ended', () => {
+        console.log("Video ended");
+        if (!currentVideo.audioUrl) {
+            if (document.hidden) {
+                unsynced = true;
+            }
+            track(1);
+        }
     });
     document.addEventListener('visibilitychange', async () => {
         if (document.visibilityState === 'visible') {
