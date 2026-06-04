@@ -64,17 +64,13 @@ async function fetchCobaltDirectory() {
  */
 const CORS_PROXIES = [
     //"corsproxy.io/?url=",
-    //"proxy.corsfix.com/?", // Must signup
-    // "thingproxy.freeboard.io/fetch/", // 10r/s
-    "api.codetabs.com/v1/proxy?quest=", // 5r/s slow
+    //"api.codetabs.com/v1/proxy?quest=", // 5r/s 5MB
     //"api.allorigins.win/raw?url=", // slow
-    //"whateverorigin.org/get?url=", // 20r/s 500(ServerError)
-    "api.cors.lol/?url=", // FileLimit20mb and slow
+    "whateverorigin.org/get?url=", // 20r/s 500(ServerError)
+    "api.cors.lol/?url=", // 10MB Per Request
     //"alloworigin.com/get?url=", // Failing
 ];
-function addCors_Proxy(cors_proxy, url) {
-    return `https://${cors_proxy}${encodeURIComponent(url)}`;
-}
+function addCors_Proxy(cors_proxy, url) {return `https://${cors_proxy}${encodeURIComponent(url)}`;}
 
 let temp_playlistAddress = "PLXPg0M1hQSff6jP8XGSDSsyf4lDdTfOXT";
 
@@ -138,11 +134,12 @@ async function cacheVideo(videoId, videoUrl=null, audioUrl=null) {
     if (audioUrl) {
         const audioCache = await caches.open("cached-audios");
         const audioResponse = await fetch(audioUrl);
+        const audioResponseClone = audioResponse.clone();
         const blob = await audioResponse.blob();
         if (audioResponse.ok && blob.size>50000) {
-            await audioCache.put(videoId, audioResponse.clone());
+            await audioCache.put(videoId, audioResponseClone);
         } else {
-            console.warn("cache: !ok/blob:",audioResponse,blob);
+            console.warn("cache: !ok/blob:",audioResponseClone,blob);
             return false;
         }
     }
@@ -153,6 +150,7 @@ async function cacheVideo(videoId, videoUrl=null, audioUrl=null) {
             console.warn("cache: response !ok",response);
             return false;
         }
+        console.log("Response Returned!");
         const responseClone = response.clone();
         const blob = await response.blob();
         if (blob.size==0) {
@@ -198,7 +196,7 @@ async function fetchWithCatch(targetUrl, method={}) {
         if (!response) {return null;}
         const json = await response.json();
         if (!response.ok) {
-            console.warn("Response not ok:",response.status, json);
+            console.warn("fwc:Response not ok:",response.status, json);
             return null;
         }
         return json;
@@ -670,12 +668,10 @@ async function loadPlayer(fullVideo) {
             audioPlayer.play().then(() => updateMediaSession(videoData));
         }
         if (document.hidden) {
-            videoPlayer.src = URL.createObjectURL(blob);
             console.warn("Started playing audio while hidden!");
             return true;
         }
     }
-    document.body.style.background = "black";
     console.log("Loading was successful!");
     if (successfulLoad && !document.hidden) {
         return playVideoPlayer();
@@ -685,15 +681,15 @@ async function loadPlayer(fullVideo) {
  * 
  * @param {*} title 
  * @param {*} author 
- * @param {*} thumbnail 
+ * @param {*} thumbnailUrl 
  * @param {*} videoUrl 
  */
-async function loadVideoPlayer(title, author, thumbnail, videoUrl) {
+async function loadVideoPlayer(title, author, thumbnailUrl, videoUrl) {
     document.getElementById("video_name").textContent = title;
     document.getElementById("video_author").textContent = author;
 
     if (getLocalBoolean('useThumbnail')) {
-        thumbnail.src = thumbnail;
+        thumbnail.src = thumbnailUrl;
     } else {
         console.log("loadVideoPlayer: Loading Video");
         videoPlayer.src = videoUrl;
