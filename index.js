@@ -29,15 +29,33 @@ const wrapInvidious = (domain,vId)=>{return `https://${domain}/api/v1/videos/${v
  * https://github.com/TeamPiped/Piped/wiki/Instances/408b500c3e205e95a197d42b33345c1f207ba62b
  * https://awsmfoss.com/piped/
  */
-const PIPED_API_INSTANCES = [
-    //"pipedapi.kavin.rocks", // 526 CORS
-    //"api.piped.private.coffee", // 500
-    //"pipedapi.leptons.xyz", // 502 BAD GATEWAY CORS
-    //"pipedapi-libre.kavin.rocks", // 502 BAD GATEWAY
-    //"pipedapi.orangenet.cc", // Frontend
-    //"piped.syncpundit.io",
-    //"nuv3d-7iaaa-aaaan-qahma-cai.ic0.app", // Frontend
-];
+let PIPED_API_INSTANCES = [];
+const PIPED_DIRECTORY = "https://github.com/TeamPiped/documentation/blob/main/content/docs/public-instances/index.md";
+async function fetchPipedInstances() {
+    console.log("Fetching Piped Directory...");
+    fetch(PIPED_DIRECTORY)
+        .then(resp => resp.text())
+        .then(body => {
+            var skipped = 0;
+            const lines = body.split("\n");
+            lines.map(line => {
+                const split = line.split("|");
+                if (split.length == 4) {
+                    if (skipped < 2) {
+                        skipped++;
+                        return;
+                    }
+                    PIPED_API_INSTANCES.push({
+                        name: split[0].trim(),
+                        apiurl: split[1].trim(),
+                        locations: split[2].trim(),
+                        cdn: split[3].trim(),
+                    });
+                }
+            });
+        });
+    console.log("Piped Instances:",PIPED_API_INSTANCES)
+}
 const wrapPiped=(domain,vId)=>{return `https://${domain}/streams/${vId}`;}
 /**
  * https://github.com/imputnet/cobalt
