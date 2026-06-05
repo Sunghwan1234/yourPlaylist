@@ -30,33 +30,33 @@ const wrapInvidious = (domain,vId)=>{return `https://${domain}/api/v1/videos/${v
  * https://awsmfoss.com/piped/
  */
 let PIPED_API_INSTANCES = [];
-const PIPED_DIRECTORY = "https://github.com/TeamPiped/documentation/blob/main/content/docs/public-instances/index.md";
 async function fetchPipedInstances() {
     console.log("Fetching Piped Directory...");
-    fetch(PIPED_DIRECTORY)
-        .then(resp => resp.text())
-        .then(body => {
-            var skipped = 0;
-            const lines = body.split("\n");
-            lines.map(line => {
-                const split = line.split("|");
-                if (split.length == 4) {
-                    if (skipped < 2) {
-                        skipped++;
-                        return;
-                    }
-                    PIPED_API_INSTANCES.push({
-                        name: split[0].trim(),
-                        apiurl: split[1].trim(),
-                        locations: split[2].trim(),
-                        cdn: split[3].trim(),
-                    });
-                }
-            });
+    function s(body) {
+        const lines = body.split("\n");
+        lines.map(line => {
+            const split = line.split("|");
+            PIPED_API_INSTANCES.push(split[1].trim());
         });
-    console.log("Piped Instances:",PIPED_API_INSTANCES)
+    };
+    s(`kavin.rocks (Official) | https://pipedapi.kavin.rocks | 🇺🇸, 🇮🇳, 🇳🇱, 🇨🇦, 🇬🇧, 🇫🇷 | Yes | ![](https://pipedapi.kavin.rocks/registered/badge)
+leptons.xyz | https://pipedapi.leptons.xyz | 🇦🇹 | Yes | ![](https://pipedapi.leptons.xyz/registered/badge)
+nosebs.ru | https://pipedapi.nosebs.ru | 🇫🇮 | Yes | ![](https://pipedapi.nosebs.ru/registered/badge)
+kavin.rocks libre (Official) | https://pipedapi-libre.kavin.rocks | 🇳🇱 | No | ![](https://pipedapi-libre.kavin.rocks/registered/badge)
+privacy.com.de | https://piped-api.privacy.com.de | 🇩🇪 | No | ![](https://piped-api.privacy.com.de/registered/badge)
+adminforge.de | https://pipedapi.adminforge.de | 🇩🇪 | No | ![](https://pipedapi.adminforge.de/registered/badge)
+piped.yt | https://api.piped.yt | 🇩🇪 | No | ![](https://api.piped.yt/registered/badge)
+drgns.space | https://pipedapi.drgns.space | 🇺🇸 | No | ![](https://pipedapi.drgns.space/registered/badge)
+owo.si | https://pipedapi.owo.si | 🇩🇪 | No | ![](https://pipedapi.owo.si/registered/badge)
+ducks.party | https://pipedapi.ducks.party | 🇳🇱 | No | ![](https://pipedapi.ducks.party/registered/badge)
+codespace.cz | https://piped-api.codespace.cz | 🇨🇿 | No | ![](https://piped-api.codespace.cz/registered/badge)
+reallyaweso.me | https://pipedapi.reallyaweso.me | 🇩🇪 | No | ![](https://pipedapi.reallyaweso.me/registered/badge)
+private.coffee | https://api.piped.private.coffee | 🇦🇹 | No | ![](https://api.piped.private.coffee/registered/badge)
+darkness.services | https://pipedapi.darkness.services | 🇺🇸 | No | ![](https://pipedapi.darkness.services/registered/badge)
+orangenet.cc | https://pipedapi.orangenet.cc | 🇸🇮 | No | ![](https://pipedapi.orangenet.cc/registered/badge)`);
+    console.log("Piped Instances:",PIPED_API_INSTANCES);
 }
-const wrapPiped=(domain,vId)=>{return `https://${domain}/streams/${vId}`;}
+const wrapPiped=(domain,vId)=>{return `${domain}/streams/${vId}`;}
 /**
  * https://github.com/imputnet/cobalt
  * https://cobalt.directory/
@@ -64,13 +64,19 @@ const wrapPiped=(domain,vId)=>{return `https://${domain}/streams/${vId}`;}
  */
 const COBALT_DIRECTORY = "https://cobalt.directory/api/working?type=api";
 let COBALT_INSTANCES = [];
+let COBALT_KEYS = {};
 async function fetchCobaltDirectory() {
     console.log("Fetching Cobalt Directory...");
     const response = await fetchWithCatch(COBALT_DIRECTORY);
     if (response) {
         COBALT_INSTANCES = response.data.youtube;
         console.log("Cobalt Instances",COBALT_INSTANCES);
+    } else {return;}
+    for (const domain of COBALT_INSTANCES) {
+        const instanceStatus = await fetchWithCatch(domain);
+        COBALT_KEYS[domain] = (instanceStatus?.cobalt.turnstileSitekey ?? null);
     }
+    console.log("cobalt keys:",COBALT_KEYS);
 }
 /**
  * https://www.whateverorigin.org/
@@ -205,6 +211,13 @@ async function getCachedAudio(videoId) {
  * @returns json response
  */
 async function fetchWithCatch(targetUrl, method={}) {
+    const data = await fetchToJson(targetUrl, method);
+    if (!data || data.error || data.status=='error') {
+        return null;
+    }
+    return data;
+}
+async function fetchToJson(targetUrl, method={}) {
     const controller = new AbortController();
     const timeoutId = setTimeout(()=>controller.abort(),10*1000);
     try {
@@ -214,15 +227,14 @@ async function fetchWithCatch(targetUrl, method={}) {
         if (!response) {return null;}
         const json = await response.json();
         if (!response.ok) {
-            console.warn("fwc:Response not ok:",response.status, json);
-            return null;
+            console.warn("ftj!ok",json?.error?.code);
         }
         return json;
     } catch (error) {
         if (error.name=='AbortError') {
-            console.warn("Timed out (10s)");
+            console.warn("ftj:Timed out (10s)");
         } else {
-            console.warn ("Unknown error:",error);
+            console.warn ("ftj:Unknown error:",error);
         }
         return null;
     } finally {
@@ -338,17 +350,28 @@ async function fetchCobaltVideo(videoId, proxy=null) {
             url: `https://youtube.com/watch?v=${videoId}`,
             //vQuality: settings.videoQuality,
         };
-        const data = await fetchWithCatch(domain, {
-            method: 'POST',
-            headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(body),
-            signal: null
-        });
-        if (!data || data.status === "error" || 
-            !data.url) {continue;}
+        const headers = {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+        };
+        if (COBALT_KEYS[domain]) {
+            console.warn("requires turnstile");
+            continue;
+        }
+        const method = {
+            method: 'POST', headers: headers, body: JSON.stringify(body), signal: null
+        };
+        console.log(method);
+        console.log(COBALT_KEYS[domain]);
+        const data = await fetchToJson(domain, method);
+        if (!data) {continue;}
+        if (data.status=='error' || !data.url) {
+            if (data.error?.code=="error.api.auth.jwt.missing") {
+                console.error("Missing jwt key",COBALT_KEYS[domain]);
+            }
+            console.error(data.error);
+            continue;
+        }
         if (!await cacheVideo(videoId, data.url)) {
             console.warn("fCobalt: Domain",domain,"url is null");
             continue;
@@ -356,6 +379,10 @@ async function fetchCobaltVideo(videoId, proxy=null) {
         console.log("fCobalt: Domain",domain,"Returned:",data);
         return data;
     }
+}
+
+async function loadCloudflare() {
+
 }
 /**
  * parses Video Data into one format.
@@ -938,3 +965,4 @@ init();
 initVideoEventListeners();
 // Run anything else here
 fetchCobaltDirectory();
+fetchPipedInstances();
