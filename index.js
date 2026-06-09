@@ -20,7 +20,7 @@ const INVIDIOUS_API_INSTANCES = [];
 async function fetchInvidiousDirectory() {
     const instances = await fetchWithCatch(INVIDIOUS_DIRECTORY);
     for (const instance of instances) {
-        if (!instance[1].monitor || instance[1].monitor?.down) {continue;}
+        if (!instance[1].monitor || instance[1].monitor?.down || instance[1].type!=="https") {continue;}
         INVIDIOUS_INSTANCES.push(instance[0]);
         if (instance[1].api) {
             INVIDIOUS_API_INSTANCES.push(instance[0]);
@@ -261,12 +261,15 @@ async function fetchPlaylistData(playlistId) {
 }
 async function fetchInvidiousVideo(videoId, proxy=null) {
     for (const domain of INVIDIOUS_API_INSTANCES) {
-        console.log("Fetching Domain",domain);
         let targetUrl = wrapInvidious(domain,videoId);
         if (proxy) {targetUrl=addCors_Proxy(proxy,targetUrl);}
+        console.log("fIV: Fetching target",targetUrl);
         const data = await fetchWithCatch(targetUrl);
         if (data) {
             const parsedData = parseVideoData(data, "invidious",videoId);
+            console.log(parsedData);
+            const videoUrls = parsedData.videoStreams;
+            const audeoUrls = parsedData.audioStreams;
 
             return passFullVideo()
         }
