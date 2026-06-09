@@ -28,23 +28,41 @@ async function fetchInvidiousDirectory() {
     }
     console.log("fInvDir success",INVIDIOUS_INSTANCES);
 }
-const wrapInvidious = (domain,vId)=>{return `https://${domain}/api/v1/videos/${vId}`;}
+const wrapInvidious = (domain,vId)=>{return `https://${domain}/api/v1/videos/${vId}&local=true`;}
 /**
  * Nothing is working btw
  * https://github.com/TeamPiped/documentation/blob/main/content/docs/public-instances/index.md
  * https://github.com/TeamPiped/Piped/wiki/Instances/408b500c3e205e95a197d42b33345c1f207ba62b
  * https://awsmfoss.com/piped/
  */
-const PIPED_API_INSTANCES = [
-    //"pipedapi.kavin.rocks", // 526 CORS
-    //"api.piped.private.coffee", // 500
-    //"pipedapi.leptons.xyz", // 502 BAD GATEWAY CORS
-    //"pipedapi-libre.kavin.rocks", // 502 BAD GATEWAY
-    //"pipedapi.orangenet.cc", // Frontend
-    //"piped.syncpundit.io",
-    //"nuv3d-7iaaa-aaaan-qahma-cai.ic0.app", // Frontend
-];
-const wrapPiped=(domain,vId)=>{return `https://${domain}/streams/${vId}`;}
+let PIPED_API_INSTANCES = [];
+async function fetchPipedInstances() {
+    console.log("Fetching Piped Directory...");
+    function s(body) {
+        const lines = body.split("\n");
+        lines.map(line => {
+            const split = line.split("|");
+            PIPED_API_INSTANCES.push(split[1].trim());
+        });
+    };
+    s(`kavin.rocks (Official) | https://pipedapi.kavin.rocks | 🇺🇸, 🇮🇳, 🇳🇱, 🇨🇦, 🇬🇧, 🇫🇷 | Yes | ![](https://pipedapi.kavin.rocks/registered/badge)
+leptons.xyz | https://pipedapi.leptons.xyz | 🇦🇹 | Yes | ![](https://pipedapi.leptons.xyz/registered/badge)
+nosebs.ru | https://pipedapi.nosebs.ru | 🇫🇮 | Yes | ![](https://pipedapi.nosebs.ru/registered/badge)
+kavin.rocks libre (Official) | https://pipedapi-libre.kavin.rocks | 🇳🇱 | No | ![](https://pipedapi-libre.kavin.rocks/registered/badge)
+privacy.com.de | https://piped-api.privacy.com.de | 🇩🇪 | No | ![](https://piped-api.privacy.com.de/registered/badge)
+adminforge.de | https://pipedapi.adminforge.de | 🇩🇪 | No | ![](https://pipedapi.adminforge.de/registered/badge)
+piped.yt | https://api.piped.yt | 🇩🇪 | No | ![](https://api.piped.yt/registered/badge)
+drgns.space | https://pipedapi.drgns.space | 🇺🇸 | No | ![](https://pipedapi.drgns.space/registered/badge)
+owo.si | https://pipedapi.owo.si | 🇩🇪 | No | ![](https://pipedapi.owo.si/registered/badge)
+ducks.party | https://pipedapi.ducks.party | 🇳🇱 | No | ![](https://pipedapi.ducks.party/registered/badge)
+codespace.cz | https://piped-api.codespace.cz | 🇨🇿 | No | ![](https://piped-api.codespace.cz/registered/badge)
+reallyaweso.me | https://pipedapi.reallyaweso.me | 🇩🇪 | No | ![](https://pipedapi.reallyaweso.me/registered/badge)
+private.coffee | https://api.piped.private.coffee | 🇦🇹 | No | ![](https://api.piped.private.coffee/registered/badge)
+darkness.services | https://pipedapi.darkness.services | 🇺🇸 | No | ![](https://pipedapi.darkness.services/registered/badge)
+orangenet.cc | https://pipedapi.orangenet.cc | 🇸🇮 | No | ![](https://pipedapi.orangenet.cc/registered/badge)`);
+    console.log("Piped Instances:",PIPED_API_INSTANCES);
+}
+const wrapPiped=(domain,vId)=>{return `${domain}/streams/${vId}`;}
 /**
  * https://github.com/imputnet/cobalt
  * https://cobalt.directory/
@@ -52,19 +70,25 @@ const wrapPiped=(domain,vId)=>{return `https://${domain}/streams/${vId}`;}
  */
 const COBALT_DIRECTORY = "https://cobalt.directory/api/working?type=api";
 let COBALT_INSTANCES = [];
+let COBALT_KEYS = {};
 async function fetchCobaltDirectory() {
     console.log("Fetching Cobalt Directory...");
     const response = await fetchWithCatch(COBALT_DIRECTORY);
     if (response) {
         COBALT_INSTANCES = response.data.youtube;
-        console.log(COBALT_INSTANCES);
+        console.log("Cobalt Instances",COBALT_INSTANCES);
+    } else {return;}
+    for (const domain of COBALT_INSTANCES) {
+        const instanceStatus = await fetchWithCatch(domain);
+        COBALT_KEYS[domain] = (instanceStatus?.cobalt.turnstileSitekey ?? null);
     }
+    console.log("cobalt keys:",COBALT_KEYS);
 }
 
 let temp_playlistAddress = "PLXPg0M1hQSff6jP8XGSDSsyf4lDdTfOXT";
 
 let playlist; // PlaylistData
-let currentVideo; // VideoData
+let currentVideo = null; // VideoData
 let currentVideoIndex=0;
 let backgroundPlaybackStatus = false;
 let unsynced = false;
@@ -78,81 +102,85 @@ const settings = {
 navigator.storage.persist();
 /**
  * 
- * @param {string} videoResponse 
- * @param {string} audioResponse 
+ * @param {string} videoUrl 
+ * @param {string} audioUrl 
  * @param {object} videoData 
  * @param {object} playlistVData 
  * @returns fullVideo
  */
-const passFullVideo = (videoResponse, audioResponse=null, videoData=null, playlistVData=null) => {
+function passFullVideo(videoUrl, audioUrl=null, videoData=null, playlistVData=null) {
     const title = videoData?.title || playlistVData?.title || 'title not found';
     const author = videoData?.author || playlistVData?.author || 'author not found';
     return {
-        videoResponse: videoResponse,
-        audioResponse: audioResponse,
+        videoUrl: videoUrl,
+        audioUrl: audioUrl,
         videoData: videoData,
         playlistVData: playlistVData,
         title: title,
         author: author,
     }
 }
+function passVideoData(videoId, videoData, playlistVData=null) {
+    const title = videoData?.title || playlistVData?.title || 'title not found';
+    const author = videoData?.author || playlistVData?.author || 'author not found';
+    return {
+        id: videoId,
+        title: title,
+        author: author,
+        videoData: videoData,
+        playlistVData: playlistVData
+    }
+}
 
 function getLocalBoolean(setting) {
     return localStorage.getItem("s_"+setting)=='true';
 }
-async function fetchUrls(videoUrl, audioUrl=null) {
-    let responses = {
-        videoResponse: null,
-        audioResponse: null,
-    };
-    if (audioUrl) {
-        const audioResponse = await fetch(audioUrl);
-        if (audioResponse.ok) {
-            responses.audioResponse = audioResponse;
-        } else {
-            return false;
-        }
-    }
-    if (videoUrl) {
-        const videoResponse = await fetch(videoUrl);
-        if (videoResponse.ok) {
-            responses.videoResponse = videoResponse;
-        } else {
-            return false;
-        }
-    }
-    return responses;
-}
 /**
- * caches responses. Make sure to use .clone()
+ * If the blob size is 0, that is because of YouTube, not Cobalt.
  * @param {*} videoId 
- * @param {*} videoResponse 
- * @param {*} audioResponse
- * @returns responses object: .videoResponse and .audioResponse
+ * @param {*} videoUrl 
+ * @param {*} audioUrl 
+ * @returns 
  */
-async function cacheVideo(videoId, videoResponse=null, audioResponse=null) {
+async function cacheVideo(videoId, videoUrl=null, audioUrl=null) {
+    console.log("cache: Caching id:",videoId,"urls",videoUrl,audioUrl);
     if (audioUrl) {
         const audioCache = await caches.open("cached-audios");
-        if (audioResponse.ok) {
-            await audioCache.put(videoId, audioResponse.clone());
-            responses.audioResponse = audioResponse;
+        const audioResponse = await fetch(audioUrl);
+        const audioResponseClone = audioResponse.clone();
+        const blob = await audioResponse.blob();
+        if (audioResponse.ok && blob.size>50000) {
+            await audioCache.put(videoId, audioResponseClone);
         } else {
+            console.warn("cache: !ok/blob:",audioResponseClone,blob);
             return false;
         }
     }
     if (videoUrl) {
         const cache = await caches.open("cached-videos");
-        if (videoResponse.ok) {
-            await cache.put(videoId, videoResponse.clone());
-            responses.videoResponse = videoResponse;
-        } else {
+        const response = await fetch(videoUrl);
+        if (!response.ok) {
+            console.warn("cache: response !ok",response);
             return false;
         }
+        console.log("Response Returned!");
+        const responseClone = response.clone();
+        const blob = await response.blob();
+        if (blob.size==0) {
+            console.warn("cache: Youtube Rate Limited.");
+            return false;
+        } else if (blob.size<50000) {
+            console.warn("cache: Malformed blob:",blob);
+            return false;
+        }
+        await cache.put(videoId, new Response(blob, {headers: response.headers}));
+        console.log("cache: Caching Success!");
+        return true;
     }
     return true;
 }
 /**
- * Returns a response. Get the blob using .blob()
+ * use .blob() on this to get the media
  * @param {*} videoId 
  * @returns 
  */
@@ -165,20 +193,6 @@ async function getCachedAudio(videoId) {
     const cache = await caches.open("cached-audios");
     return await cache.match(videoId);
 }
-
-async function returnBlob(url) {
-    const res = await fetch(url);
-    const blob = await res.blob();
-
-    console.log("valMed: Stream size:", blob.size);
-
-    if (!res.ok || blob.size < 50000) {
-        // anything tiny is likely broken
-        return null;
-    }
-
-    return blob;
-}
 /**
  * fetch but with a catch and abort.
  * @param {*} targetUrl 
@@ -186,6 +200,13 @@ async function returnBlob(url) {
  * @returns json response
  */
 async function fetchWithCatch(targetUrl, method={}) {
+    const data = await fetchToJson(targetUrl, method);
+    if (!data || data.error || data.status=='error') {
+        return null;
+    }
+    return data;
+}
+async function fetchToJson(targetUrl, method={}) {
     const controller = new AbortController();
     const timeoutId = setTimeout(()=>controller.abort(),10*1000);
     try {
@@ -195,19 +216,21 @@ async function fetchWithCatch(targetUrl, method={}) {
         if (!response) {return null;}
         const json = await response.json();
         if (!response.ok) {
-            console.warn("Response not ok:",response.status, json);
+            console.warn("ftj!ok",json?.error?.code);
         }
         return json;
     } catch (error) {
         if (error.name=='AbortError') {
-            console.warn("Timed out (10s)");
+            console.warn("ftj:Timed out (10s)");
         } else {
-            console.warn ("Unknown error:",error);
+            console.warn ("ftj:Unknown error:",error);
         }
         return null;
     } finally {
         clearTimeout(timeoutId);
     }
+    console.warn("Unknown error");
+    return null;
 }
 /**
  * https://docs.invidious.io/api/#get-apiv1playlistsplid
@@ -250,6 +273,7 @@ async function fetchPlaylistData(playlistId) {
             authorThumbnail: '',
             description: data.description,
             videos: videoData,
+            date: Date.now()/1000,
         };
         console.log(`Successfully imported ${videoData.length} videos from ${domain}`);
         console.log(playlistData);
@@ -261,18 +285,21 @@ async function fetchPlaylistData(playlistId) {
 }
 async function fetchInvidiousVideo(videoId, proxy=null) {
     for (const domain of INVIDIOUS_API_INSTANCES) {
-        let targetUrl = wrapInvidious(domain,videoId);
+        let targetUrl = wrapInvidious(domain, videoId);
         if (proxy) {targetUrl=addCors_Proxy(proxy,targetUrl);}
         console.log("fIV: Fetching target",targetUrl);
         const data = await fetchWithCatch(targetUrl);
-        if (data) {
-            const parsedData = parseVideoData(data, "invidious",videoId);
-            console.log(parsedData);
-            const videoUrls = parsedData.videoStreams;
-            const audeoUrls = parsedData.audioStreams;
-
-            return passFullVideo()
-        }
+        if (!data) {continue;}
+        const parsedData = parseVideoData(data, "invidious",videoId);
+        const formats = { // +1 for webm
+            r144p: 0, r240p: 2, r360p: 4, r480p: 8,
+            r720p: 10, r1080p: 12
+        }; // TODO: TEST TS
+        const videoUrl = parsedData.videoStreams[formats.r480p+1].url; // 480p
+        const audioUrl = parsedData.audioStreams[3].url;
+        console.log(parsedData, videoUrl, audioUrl);
+        if (!await cacheVideo(videoId, videoUrl, audioUrl)) {continue;}
+        return parsedData;
     }
     return null;
 }
@@ -280,28 +307,48 @@ async function fetchInvidiousVideo(videoId, proxy=null) {
  * https://github.com/imputnet/cobalt/blob/main/docs/api.md
  * @param {*} videoId 
  * @param {*} proxy 
- * @returns the json return
+ * @returns the blob.
  */
 async function fetchCobaltVideo(videoId, proxy=null) {
     for (const domain of COBALT_INSTANCES) {
+        console.log("fCobalt: domain",domain)
         const body = {
             url: `https://youtube.com/watch?v=${videoId}`,
             //vQuality: settings.videoQuality,
         };
-        const data = await fetchWithCatch(domain, {
-            method: 'POST',
-            headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(body)
-        });
-        if (!data || data.status === "error") {continue;}
-        if (!data.url) {continue;}
-        if (await returnBlob)
+        const headers = {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+        };
+        if (COBALT_KEYS[domain]) {
+            console.warn("requires turnstile");
+            continue;
+        }
+        const method = {
+            method: 'POST', headers: headers, body: JSON.stringify(body), signal: null
+        };
+        console.log(method);
+        console.log(COBALT_KEYS[domain]);
+        const data = await fetchToJson(domain, method);
+        if (!data) {continue;}
+        if (data.status=='error' || !data.url) {
+            if (data.error?.code=="error.api.auth.jwt.missing") {
+                console.error("Missing jwt key",COBALT_KEYS[domain]);
+            }
+            console.error(data.error);
+            continue;
+        }
+        if (!await cacheVideo(videoId, data.url)) {
+            console.warn("fCobalt: Domain",domain,"url is null");
+            continue;
+        }
         console.log("fCobalt: Domain",domain,"Returned:",data);
         return data;
     }
+}
+
+async function loadCloudflare() {
+
 }
 /**
  * parses Video Data into one format.
@@ -468,6 +515,7 @@ async function searchSimilarVideo(videoData) {
  * @param {string} videoId 
  * @param {object} videoData
  * @param {object} playlistVData
+ * @returns
  */
 async function loadVideoData(videoId, playlistVData={}) {
     console.log("LVD: Fetching",videoId);
@@ -490,15 +538,9 @@ async function loadVideoData(videoId, playlistVData={}) {
     if (pipeline=="cobalt") {
         if (!playlistVData) {playlistVData = {};}
         playlistVData.pipeline = "cobalt";
-        return passFullVideo(video.url,null,playlistVData,playlistVData);
+        return passVideoData(videoId, playlistVData, playlistVData);
     } else {
-        const formats = { // +1 for webm
-            r144p: 0, r240p: 2, r360p: 4, r480p: 8,
-            r720p: 10, r1080p: 12
-        }; // TODO: TEST TS
-        const videoUrl = video.videoStreams[formats.r480p+1].url; // 480p
-        const audioUrl = video.audioStreams[3].url;
-        return passFullVideo(videoUrl, audioUrl, video, playlistVData);
+        return passVideoData(videoId, video, playlistVData);
     }
 }
 /**
@@ -511,51 +553,51 @@ async function loadVideoData(videoId, playlistVData={}) {
 async function loadFullVideo(videoId, playlistVData, forceLoad, forceSaveAsId=null) {
     console.log('LFV: Loading Video Data of',playlistVData.title,", fl,fs",forceLoad,forceSaveAsId);
     let saved_videoData = null;
-    let isVideoCached = false;
+    let cachedVideo = null;
     if (!forceLoad) {
         saved_videoData = JSON.parse(localStorage.getItem(videoId));
-        if (saved_videoData) {
-            const cachedVideo = await getCachedVideo(videoId);
-            if (cachedVideo) {
-                isVideoCached = true;
-                const blob = await cachedVideo.blob();
-                const videoUrl = URL.createObjectURL(blob);
-                let audioUrl = null;
-                if (saved_videoData.pipeline = "cobalt") {
-                    
-                } else {
-                    const cachedAudio = await getCachedAudio(videoId);
-                    const blob = await cachedAudio.blob();
-                    audioUrl = URL.createObjectURL(blob);
-                }
-                console.log(`LFD: Found saved videoData:`,saved_videoData);
-                console.log(`LFD: Found cached video:`,cachedVideo);
-                return passFullVideo(videoUrl, audioUrl, saved_videoData. playlistVData);
+
+        cachedVideo = await getCachedVideo(videoId);
+    }
+    if (!cachedVideo || !saved_videoData) {
+        const videoData = await loadVideoData(videoId, playlistVData);
+        if (!videoData) {
+            console.warn("LFV: LVD Failed.");
+            return null;
+        }
+        cachedVideo = await getCachedVideo(videoId);
+        if (!cachedVideo) {
+            console.warn("LFV: no cachd video even though loaded",videoData);
+            return null;
+        }
+        console.log("LFV: Saving videoData:",videoData);
+        let savingVideoId = videoId;
+        if (forceSaveAsId) {
+            console.log("LFV: Overwriting saved video to alternative:",videoData.title);
+            savingVideoId = forceSaveAsId;
+        }
+        localStorage.setItem(savingVideoId, JSON.stringify(videoData.videoData || videoData.playlistVData));
+        saved_videoData = JSON.parse(localStorage.getItem(videoId));
+    }
+
+    if (cachedVideo) {
+        const blob = await cachedVideo.blob();
+        const videoUrl = URL.createObjectURL(blob);
+        let audioUrl = null;
+        if ((saved_videoData.pipeline ?? "cobalt") !== "cobalt") {
+            const cachedAudio = await getCachedAudio(videoId);
+            if (cachedAudio) {
+                const audioBlob = await cachedAudio.blob();
+                audioUrl = URL.createObjectURL(audioBlob);
             }
         }
-    }
-    const fullVideo = await loadVideoData(videoId, playlistVData);
-    if (!fullVideo) {
-        console.warn("LFV: LVD Failed.");
-        return null;
-    }
-    console.log("LFV: Loaded full video:",fullVideo);
-    
-    if ((!forceLoad && !saved_videoData) || forceSaveAsId) { // maybe () around !saved_video || saveTo
-        console.log("LFV: Saving fullVideo:",fullVideo);
-        if (forceSaveAsId) {
-            console.log("LFV: Overwriting saved video to alternative:",fullVideo.title);
-            videoId = forceSaveAsId;
-        }
-        cacheVideo(videoId, fullVideo.videoUrl, fullVideo.audioUrl);
-        localStorage.setItem(videoId, JSON.stringify(fullVideo.videoData || fullVideo.playlistVData));
+        console.log(`LFD: Found saved videoData:`,saved_videoData);
+        console.log(`LFD: Found cached video:`,cachedVideo);
+        return passFullVideo(videoUrl, audioUrl, saved_videoData, playlistVData);
     } else {
-        if (!isVideoCached) {
-            console.log("LFV: Caching fullVideo:",fullVideo);
-            cacheVideo(videoId, fullVideo.videoUrl, fullVideo.audioUrl);
-        }
+        console.error("No cached video for",videoId);
     }
-    return fullVideo;
+    return null;
 }
 /**
  * loads a video
@@ -605,47 +647,47 @@ async function loadPlayer(fullVideo) {
     videoPlayer.pause();
     videoPlayer.hidden = getLocalBoolean('useThumbnail');
     audioPlayer.currentTime = 0;
-    audioPlayer.src = audioUrl;
+    audioPlayer.src = audioUrl ?? '';
 
-    const blob = await returnBlob(videoUrl);
-    if (!blob) {
-        console.warn("LP: Blob is null");
-        return false;
-    }
-
-    const successfulLoad = await loadVideoPlayer(fullVideo);
+    const successfulLoad = await loadVideoPlayer(
+        fullVideo.title,
+        fullVideo.author,
+        thumbnailUrl,
+        videoUrl,
+    );
     if (getLocalBoolean('useThumbnail') || document.hidden) {
         if (audioUrl) {
             audioPlayer.play().then(() => updateMediaSession(videoData));
         }
         if (document.hidden) {
-            videoPlayer.src = URL.createObjectURL(blob);
             console.warn("Started playing audio while hidden!");
             return true;
         }
-    } else {
-        const videoPlayed = await playVideoPlayer();
-        if (!videoPlayed) {return false;}
     }
-
-    document.body.style.background = "black";
-
     console.log("Loading was successful!");
-    return true;
+    if (successfulLoad && !document.hidden) {
+        return playVideoPlayer();
+    }
 }
-
-async function loadVideoPlayer(fullVideo) {
-    document.getElementById("video_name").textContent = fullVideo.title;
-    document.getElementById("video_author").textContent = fullVideo.author;
+/**
+ * 
+ * @param {*} title 
+ * @param {*} author 
+ * @param {*} thumbnailUrl 
+ * @param {*} videoUrl 
+ */
+async function loadVideoPlayer(title, author, thumbnailUrl, videoUrl) {
+    document.getElementById("video_name").textContent = title;
+    document.getElementById("video_author").textContent = author;
 
     if (getLocalBoolean('useThumbnail')) {
-        thumbnail.src = fullVideo.videoData.thumbnails[0].url;
+        thumbnail.src = thumbnailUrl;
     } else {
-        console.log("loadVideoPlayer: Loading Video URL:", fullVideo.videoUrl);
-        const blob = await returnBlob(fullVideo.videoUrl);
-        videoPlayer.src = URL.createObjectURL(blob);
+        console.log("loadVideoPlayer: Loading Video");
+        videoPlayer.src = videoUrl;
         await videoPlayer.load();
     }
+    return true;
 }
 async function playVideoPlayer() {
     const videoPlayed = await videoPlayer.play().catch((error) => {
@@ -721,24 +763,23 @@ function togglePlaylistContainer() {
 
 async function loadPlaylist(playlistId=temp_playlistAddress, forceLoad=getLocalBoolean('forceLoad')) {
     const saved_playlist = JSON.parse(localStorage.getItem('playlist'));
-    if (saved_playlist && saved_playlist.videos.length>0 && !forceLoad) {
-        console.log("Loaded saved playlist!");
+    
+    if (saved_playlist && saved_playlist.videos.length>0) {
         playlist = saved_playlist;
-        return playlist;
-    } else {
-        console.log("Force Loading playlist...");
+    }
+    if (((saved_playlist?.date ?? 0) < (Date.now()/1000) - (60*60)) || forceLoad) {
+        console.log("Force Loading playlist...",forceLoad, Date.now()/1000);
         playlist = await fetchPlaylistData(playlistId);
         if (playlist && playlist.videos.length>0) {
             localStorage.setItem('playlist', JSON.stringify(playlist));
             console.log("Saved Playlist!");
             return playlist;
         } else {
-            console.warn("Could not load playlist from Invidious.");
+            console.warn("Could not load playlist from Invidious. Reverting to old.");
             window.alert("Error: Could not load playlist from Invidious.");
-            return null;
+            playlist = saved_playlist;
         }
-    }
-    return null;
+    } 
 }
 
 function checkAllInstances() {
@@ -759,7 +800,7 @@ async function initVideoEventListeners() {
             backgroundPlaybackStatus = false;
             },100);
         } else {
-            if (currentVideo.audioUrl && audioPlayer.paused) {
+            if ((currentVideo?.audioUrl ?? false) && audioPlayer?.paused) {
                 videoPlayer.currentTime = audioPlayer.currentTime;
                 audioPlayer.play().then(()=>{updateMediaSession(currentVideo)});
                 audioPlayer.muted = false;
@@ -772,7 +813,7 @@ async function initVideoEventListeners() {
             backgroundPlaybackStatus = true;
         } else {
             updateMediaSession(currentVideo);
-            if (currentVideo.audioUrl) {
+            if (currentVideo?.audioUrl ?? false) {
                 audioPlayer.pause()
             
                 audioPlayer.muted = true;
@@ -784,7 +825,7 @@ async function initVideoEventListeners() {
         console.log("seek");
         if (!backgroundPlaybackStatus) {
             isSeeking = true;
-            if (currentVideo.audioUrl) {
+            if (currentVideo?.audioUrl ?? false) {
                 audioPlayer.currentTime = videoPlayer.currentTime;
             }
             updateMediaSession(currentVideo);
@@ -794,13 +835,12 @@ async function initVideoEventListeners() {
         console.log("seeked");
         if (!backgroundPlaybackStatus) {
             updateMediaSession(currentVideo);
-            if (currentVideo.audioUrl) {
+            if (currentVideo?.audioUrl ?? false) {
                 audioPlayer.muted = false;
             }
             setTimeout(()=>{isSeeking=false;}, 10);
         }
     });
-
     audioPlayer.addEventListener('ended', () => {
         videoPlayer.pause();
         if (document.hidden) {
@@ -808,17 +848,26 @@ async function initVideoEventListeners() {
         }
         track(1);
     });
+    videoPlayer.addEventListener('ended', () => {
+        console.log("Video ended");
+        if (!currentVideo.audioUrl) {
+            if (document.hidden) {
+                unsynced = true;
+            }
+            track(1);
+        }
+    });
     document.addEventListener('visibilitychange', async () => {
         if (document.visibilityState === 'visible') {
             if (unsynced) { // video did not load in background?
                 if (currentVideo) {
                     await loadVideoPlayer(currentVideo);
-                    if (currentVideo.audioUrl) {
+                    if (currentVideo?.audioUrl ?? false) {
                         audioPlayer.muted = true;
                     }
                     videoPlayer.addEventListener('loadedmetadata', function syncOnLoad() {
-                        videoPlayer.currentTime = audioPlayer.currentTime;
-                        if (currentVideo.audioUrl && !audioPlayer.paused) {
+                        videoPlayer.currentTime = audioPlayer?.currentTime;
+                        if ((currentVideo?.audioUrl ?? false) && !audioPlayer.paused) {
                             audioPlayer.muted = false;
                             playVideoPlayer();
                         }
@@ -826,7 +875,7 @@ async function initVideoEventListeners() {
                     });
                 }
                 unsynced = false;
-            } else if (audioPlayer.src && !audioPlayer.paused) { // Video is loaded
+            } else if ((currentVideo?.audioUrl ?? false) && !audioPlayer?.paused) { // Video is loaded
                 videoPlayer.currentTime = audioPlayer.currentTime;
             }
         }
@@ -863,4 +912,3 @@ fetchInvidiousDirectory().then(async () => {
 });
 // Other INIT
 initVideoEventListeners();
-

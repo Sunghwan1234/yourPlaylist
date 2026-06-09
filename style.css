@@ -1,6 +1,6 @@
 body {
     margin: 0;
-    background-color: lightgray;
+    background-color: #111111;
 }
 h1 {
     color: white;
@@ -9,6 +9,9 @@ button {
     border: none;
     border-radius: 5px;
     z-index: 2;
+}
+span {
+    font-size: 10px;
 }
 .box {
     display: flex;
