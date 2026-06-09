@@ -18,7 +18,7 @@ const INVIDIOUS_INSTANCES = [
     "inv.thepixora.com",
 ];
 const INVIDIOUS_API_INSTANCES = [
-    //"inv.thepixora.com"
+    "inv.thepixora.com"
 ];
 const wrapInvidious = (domain,vId)=>{return `https://${domain}/api/v1/videos/${vId}`;}
 /**
@@ -51,23 +51,6 @@ async function fetchCobaltDirectory() {
         COBALT_INSTANCES = response.data.youtube;
         console.log(COBALT_INSTANCES);
     }
-}
-/**
- * https://www.whateverorigin.org/
- * https://allorigins.win/
- * https://cors.lol/#getStarted
- * https://github.com/Eiledon/alloworigin
- */
-const CORS_PROXIES = [
-    //"corsproxy.io/?url=",
-    //"proxy.corsfix.com/?", // Must signup
-    //"api.allorigins.win/raw?url=", // slow
-    //"whateverorigin.org/get?url=", // 20r/s 500(ServerError)
-    "api.cors.lol/?url=", // FileLimit20mb and slow
-    //"alloworigin.com/get?url=", // Failing
-];
-function addCors_Proxy(cors_proxy, url) {
-    return `https://${cors_proxy}${encodeURIComponent(url)}`;
 }
 
 let temp_playlistAddress = "PLXPg0M1hQSff6jP8XGSDSsyf4lDdTfOXT";
@@ -248,8 +231,8 @@ async function fetchPlaylistData(playlistId) {
                 author: video.author,
                 index: video.index,
                 length: video.lengthSeconds,
-                thumbnail: videoThumbnails[0].url,
-                thumbnails: videoThumbnails,
+                thumbnail: `https://img.youtube.com/vi/${video.videoId}/mqdefault.jpg`,
+                thumbnails: [`https://img.youtube.com/vi/${video.videoId}/mqdefault.jpg`],
             };
         });
         const playlistData = {
@@ -278,30 +261,6 @@ async function fetchVideo(videoId, proxy=null) {
             const parsedData = parseVideoData(data, "invidious",videoId);
             return passFullVideo()
         }
-    }
-    return null;
-}
-async function fetchPipedVideo(videoId, proxy=null) {
-    for (const domain of PIPED_API_INSTANCES) {
-        console.log("Fetching Domain",domain);
-        let targetUrl = wrapPiped(domain,videoId);
-        if (proxy) {targetUrl=addCors_Proxy(proxy,targetUrl);}
-        const data = await fetchWithCatch(targetUrl);
-        if (data) {return parseVideoData(data, "piped",videoId);}
-    }
-    return null;
-}
-async function fetchProxiedVideo(videoId) {
-    for (const proxy of CORS_PROXIES) {
-        const data = await fetchVideo(videoId, proxy);
-        if (data) {return data;}
-    }
-    return null;
-}
-async function fetchProxiedPipedVideo(videoId) {
-    for (const proxy of CORS_PROXIES) {
-        const data = await fetchPipedVideo(videoId, proxy);
-        if (data) {return data;}
     }
     return null;
 }
@@ -608,25 +567,6 @@ async function loadVideo(videoId, playlistVData, forceLoad=getLocalBoolean('forc
         if (!videoLoaded) {
             console.warn(`LV: Video ${fullVideo.title} failed to forceload.`);
             return;
-            // const isConfirmed = confirm("Try searching for similar videos?");
-
-            // if (isConfirmed) {
-            //     console.log("Attempting search with video title",fullVideo.title);
-            //     const searchResult = await searchSimilarVideo(videoData);
-            //     if (searchResult) {
-            //         videoLoaded = await loadVideo(searchResult, videoData, true, videoId);
-            //         if (!videoLoaded) {
-            //             console.error(`loadVideo: All attempts to load ${fullVideo.title} failed.`);
-            //             window.alert("All attempts at loading has failed.");
-            //             return;
-            //         }
-            //     } else {
-            //         console.error("loadVideo: searchResult returned null.");
-            //         return;
-            //     }
-            // } else {
-            //     return;
-            // }
         }
     }
     currentVideo = fullVideo;
