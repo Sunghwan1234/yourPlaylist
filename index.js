@@ -10,16 +10,24 @@ const thumbnail = document.getElementById("thumbnail");
 
 const settingsPanel = document.getElementById("s_settingsPanel");
 
-const INVIDIOUS_INSTANCES = [
-    "inv.nadeko.net", // Endpoint Disabled
-    "yt.chocolatemoo53.com",
-    // "invidious.nerdvpn.de", // Auth required
-    // "yewtu.be", // Is a frontend
-    "inv.thepixora.com",
-];
-const INVIDIOUS_API_INSTANCES = [
-    "inv.thepixora.com"
-];
+/**
+ * https://api.invidious.io/
+ * currently only api available is "inv.thepixora.com"
+ */
+const INVIDIOUS_DIRECTORY = "https://api.invidious.io/instances.json";
+const INVIDIOUS_INSTANCES = [];
+const INVIDIOUS_API_INSTANCES = [];
+async function fetchInvidiousDirectory() {
+    const instances = await fetchWithCatch(INVIDIOUS_DIRECTORY);
+    for (const instance of instances) {
+        if (!instance[1].monitor || instance[1].monitor?.down) {continue;}
+        INVIDIOUS_INSTANCES.push(instance[0]);
+        if (instance[1].api) {
+            INVIDIOUS_API_INSTANCES.push(instance[0]);
+        }
+    }
+    console.log("fInvDir success",INVIDIOUS_INSTANCES);
+}
 const wrapInvidious = (domain,vId)=>{return `https://${domain}/api/v1/videos/${vId}`;}
 /**
  * Nothing is working btw
@@ -214,11 +222,11 @@ async function fetchPlaylistData(playlistId) {
 
         const data = await fetchWithCatch(targetUrl);
         if (!data) {continue;}
-        if (!data.videos || !Array.isArray(data.videos)) {
+        //console.log("Returned data:",data);
+        if (!data.videos || data.videos.length==0) {
             console.warn(`${domain} returned data, but 'videos' array was missing.`);
             continue;
         }
-        //console.log(data);
         const videoData = data.videos.map(video => {
             const videoThumbnails = video.videoThumbnails.map(thumbnail => {
                 let newThumbnail = thumbnail;
@@ -251,7 +259,7 @@ async function fetchPlaylistData(playlistId) {
     console.error("All Invidious API instances failed.");
     return null;
 }
-async function fetchVideo(videoId, proxy=null) {
+async function fetchInvidiousVideo(videoId, proxy=null) {
     for (const domain of INVIDIOUS_API_INSTANCES) {
         console.log("Fetching Domain",domain);
         let targetUrl = wrapInvidious(domain,videoId);
@@ -259,6 +267,7 @@ async function fetchVideo(videoId, proxy=null) {
         const data = await fetchWithCatch(targetUrl);
         if (data) {
             const parsedData = parseVideoData(data, "invidious",videoId);
+
             return passFullVideo()
         }
     }
@@ -460,7 +469,7 @@ async function searchSimilarVideo(videoData) {
 async function loadVideoData(videoId, playlistVData={}) {
     console.log("LVD: Fetching",videoId);
     let pipeline="invidious";
-    let video = await fetchVideo(videoId);
+    let video = await fetchInvidiousVideo(videoId);
     if (!video) {
         console.log("LVD: Trying Proxies...");
         video = await fetchProxiedVideo(videoId);
@@ -707,26 +716,26 @@ function togglePlaylistContainer() {
     }
 }
 
-async function init() {
-    loadPlaylist();
-    showPlaylist();
-}
 async function loadPlaylist(playlistId=temp_playlistAddress, forceLoad=getLocalBoolean('forceLoad')) {
     const saved_playlist = JSON.parse(localStorage.getItem('playlist'));
     if (saved_playlist && saved_playlist.videos.length>0 && !forceLoad) {
         console.log("Loaded saved playlist!");
         playlist = saved_playlist;
+        return playlist;
     } else {
         console.log("Force Loading playlist...");
         playlist = await fetchPlaylistData(playlistId);
         if (playlist && playlist.videos.length>0) {
             localStorage.setItem('playlist', JSON.stringify(playlist));
             console.log("Saved Playlist!");
+            return playlist;
         } else {
             console.warn("Could not load playlist from Invidious.");
             window.alert("Error: Could not load playlist from Invidious.");
+            return null;
         }
     }
+    return null;
 }
 
 function checkAllInstances() {
@@ -843,8 +852,12 @@ function initBoolSettings() {
 function toggleSettingsPanel() {settingsPanel.hidden = !settingsPanel.hidden;}
 function forceLoadPlaylist() {loadPlaylist(temp_playlistAddress,true);}
 initBoolSettings();
-// Other INIT
-init();
-initVideoEventListeners();
-// Run anything else here
+
 fetchCobaltDirectory();
+fetchInvidiousDirectory().then(async () => {
+    await loadPlaylist();
+    showPlaylist();
+});
+// Other INIT
+initVideoEventListeners();
+
