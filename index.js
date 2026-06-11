@@ -28,7 +28,7 @@ async function fetchInvidiousDirectory() {
     }
     console.log("fInvDir success",INVIDIOUS_INSTANCES);
 }
-const wrapInvidious = (domain,vId)=>{return `https://${domain}/api/v1/videos/${vId}&local=true`;}
+const wrapInvidious = (domain,vId)=>{return `https://${domain}/api/v1/videos/${vId}?local=true`;}
 /**
  * Nothing is working btw
  * https://github.com/TeamPiped/documentation/blob/main/content/docs/public-instances/index.md
@@ -47,15 +47,9 @@ async function fetchPipedInstances() {
     };
     s(`kavin.rocks (Official) | https://pipedapi.kavin.rocks | 🇺🇸, 🇮🇳, 🇳🇱, 🇨🇦, 🇬🇧, 🇫🇷 | Yes | ![](https://pipedapi.kavin.rocks/registered/badge)
 leptons.xyz | https://pipedapi.leptons.xyz | 🇦🇹 | Yes | ![](https://pipedapi.leptons.xyz/registered/badge)
-nosebs.ru | https://pipedapi.nosebs.ru | 🇫🇮 | Yes | ![](https://pipedapi.nosebs.ru/registered/badge)
 kavin.rocks libre (Official) | https://pipedapi-libre.kavin.rocks | 🇳🇱 | No | ![](https://pipedapi-libre.kavin.rocks/registered/badge)
-privacy.com.de | https://piped-api.privacy.com.de | 🇩🇪 | No | ![](https://piped-api.privacy.com.de/registered/badge)
-adminforge.de | https://pipedapi.adminforge.de | 🇩🇪 | No | ![](https://pipedapi.adminforge.de/registered/badge)
-piped.yt | https://api.piped.yt | 🇩🇪 | No | ![](https://api.piped.yt/registered/badge)
 drgns.space | https://pipedapi.drgns.space | 🇺🇸 | No | ![](https://pipedapi.drgns.space/registered/badge)
-owo.si | https://pipedapi.owo.si | 🇩🇪 | No | ![](https://pipedapi.owo.si/registered/badge)
 ducks.party | https://pipedapi.ducks.party | 🇳🇱 | No | ![](https://pipedapi.ducks.party/registered/badge)
-codespace.cz | https://piped-api.codespace.cz | 🇨🇿 | No | ![](https://piped-api.codespace.cz/registered/badge)
 reallyaweso.me | https://pipedapi.reallyaweso.me | 🇩🇪 | No | ![](https://pipedapi.reallyaweso.me/registered/badge)
 private.coffee | https://api.piped.private.coffee | 🇦🇹 | No | ![](https://api.piped.private.coffee/registered/badge)
 darkness.services | https://pipedapi.darkness.services | 🇺🇸 | No | ![](https://pipedapi.darkness.services/registered/badge)
@@ -63,6 +57,9 @@ orangenet.cc | https://pipedapi.orangenet.cc | 🇸🇮 | No | ![](https://piped
     console.log("Piped Instances:",PIPED_API_INSTANCES);
 }
 const wrapPiped=(domain,vId)=>{return `${domain}/streams/${vId}`;}
+function wrapCloudflare(url) {
+    return `${"https://your-playlist.sunghwan1002222.workers.dev"}/piped/${encodeURIComponent(url)}`;
+}
 /**
  * https://github.com/imputnet/cobalt
  * https://cobalt.directory/
@@ -82,7 +79,7 @@ async function fetchCobaltDirectory() {
         const instanceStatus = await fetchWithCatch(domain);
         COBALT_KEYS[domain] = (instanceStatus?.cobalt.turnstileSitekey ?? null);
     }
-    console.log("cobalt keys:",COBALT_KEYS);
+    //console.log("cobalt keys:",COBALT_KEYS);
 }
 
 let temp_playlistAddress = "PLXPg0M1hQSff6jP8XGSDSsyf4lDdTfOXT";
@@ -246,8 +243,8 @@ async function fetchPlaylistData(playlistId) {
         const data = await fetchWithCatch(targetUrl);
         if (!data) {continue;}
         //console.log("Returned data:",data);
-        if (!data.videos || data.videos.length==0) {
-            console.warn(`${domain} returned data, but 'videos' array was missing.`);
+        if (!data.videos || data.videos.length<1) {
+            console.warn(`${domain} returned data, but 'videos' array was missing.`,data);
             continue;
         }
         const videoData = data.videos.map(video => {
@@ -279,7 +276,6 @@ async function fetchPlaylistData(playlistId) {
         console.log(playlistData);
         return playlistData;
     }
-
     console.error("All Invidious API instances failed.");
     return null;
 }
@@ -299,6 +295,37 @@ async function fetchInvidiousVideo(videoId, proxy=null) {
         const audioUrl = parsedData.audioStreams[3].url;
         console.log(parsedData, videoUrl, audioUrl);
         if (!await cacheVideo(videoId, videoUrl, audioUrl)) {continue;}
+        return parsedData;
+    }
+    return null;
+}
+async function fetchPipedVideo(videoId, proxy=null) {
+    for (const domain of PIPED_API_INSTANCES) {
+        let targetUrl = wrapPiped(domain,videoId);
+        if (proxy) {
+            targetUrl=wrapCloudflare(targetUrl);
+        }
+        console.log("fPip: Fetching target",targetUrl);
+        const data = await fetchWithCatch(targetUrl);
+        if (!data) {continue;}
+        console.log("fPip: Data returned:",data);
+        const parsedData = parseVideoData(data, "piped",videoId);
+        console.log("fPip: Parsed Data:",parsedData);
+        let videoUrl;
+        if (parsedData.videoStreams && parsedData.videoStreams.length>0) {
+            videoUrl = parsedData.videoStreams[0].url;
+        } else {
+            console.warn("No Video Streams.");
+        }
+        let audioUrl;
+        if (parsedData.audioStreams && parsedData.audioStreams.length>0) {
+
+        } else {
+            console.warn("No Audio Streams.");
+        }
+        //const audioUrl = parsedData.audioStreams[]
+        console.log("fPip urls:", videoUrl, audioUrl);
+        if (!await cacheVideo(videoId, videoUrl)) {continue;}
         return parsedData;
     }
     return null;
@@ -328,7 +355,6 @@ async function fetchCobaltVideo(videoId, proxy=null) {
             method: 'POST', headers: headers, body: JSON.stringify(body), signal: null
         };
         console.log(method);
-        console.log(COBALT_KEYS[domain]);
         const data = await fetchToJson(domain, method);
         if (!data) {continue;}
         if (data.status=='error' || !data.url) {
@@ -345,10 +371,6 @@ async function fetchCobaltVideo(videoId, proxy=null) {
         console.log("fCobalt: Domain",domain,"Returned:",data);
         return data;
     }
-}
-
-async function loadCloudflare() {
-
 }
 /**
  * parses Video Data into one format.
@@ -522,8 +544,9 @@ async function loadVideoData(videoId, playlistVData={}) {
     let pipeline="invidious";
     let video = await fetchInvidiousVideo(videoId);
     if (!video) {
-        console.log("LVD: Trying Proxies...");
-        video = await fetchProxiedVideo(videoId);
+        console.log("LVD: Trying Piped...");
+        pipeline="piped";
+        video = await fetchPipedVideo(videoId,true);
         if (!video) {
             console.log("LVD: Trying Cobalt...");
             pipeline = "cobalt";
@@ -906,6 +929,7 @@ function forceLoadPlaylist() {loadPlaylist(temp_playlistAddress,true);}
 initBoolSettings();
 
 fetchCobaltDirectory();
+fetchPipedInstances();
 fetchInvidiousDirectory().then(async () => {
     await loadPlaylist();
     showPlaylist();
