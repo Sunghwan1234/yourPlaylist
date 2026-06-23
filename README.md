@@ -11,3 +11,34 @@
   <li>LocalStorage and Cache to store data</li>
   <l1>Some AIs helping me learn new code</l1>
 </ul>
+
+<h1>devnotes</h1>
+
+Library
+fetchWithCatch
+  fetchToJson
+    fetch
+
+Current Video Loading & Playing Trees
+  LoadVideoIndex -> LoadVideo
+    loadFullVideo
+      getCachedVideo
+      loadVideoData (all fetches here)
+        (the fetches themselves cache the videos for playback.)
+        fetchInvidiousVideo
+        fetchPipedVideo
+        fetchCobaltVideo
+        returns passVideoData
+      returns passFullVideo
+    loadPlayer
+    (tries forceloading)
+
+Goal Trees
+  LoadVideoIndex -> LoadVideo
+    (Handles getting saved videoData from cache and localStorage)
+    fetchVideo
+      fetch*method*Video
+        (handles fetch)
+        (handles cache & playback integrated maybe)
+      returns passFullVideo (contains both video urls and data)
+

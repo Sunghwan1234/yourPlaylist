@@ -82,6 +82,28 @@ async function fetchCobaltDirectory() {
     //console.log("cobalt keys:",COBALT_KEYS);
 }
 
+let INSTANCES = [];
+function listInstances() {
+    for (const domain of INVIDIOUS_API_INSTANCES) {
+        INSTANCES.push({
+            instance: "invidious",
+            domain: domain
+        });
+    }
+    for (const domain of PIPED_API_INSTANCES) {
+        INSTANCES.push({
+            instance: "piped",
+            domain: domain
+        });
+    }
+    for (const domain of COBALT_INSTANCES) {
+        INSTANCES.push({
+            instance: "cobalt",
+            domain: domain
+        });
+    }
+}
+
 let temp_playlistAddress = "PLXPg0M1hQSff6jP8XGSDSsyf4lDdTfOXT";
 
 let playlist; // PlaylistData
@@ -140,7 +162,7 @@ function getLocalBoolean(setting) {
  * @returns 
  */
 async function cacheVideo(videoId, videoUrl=null, audioUrl=null) {
-    console.log("cache: Caching id:",videoId,"urls",videoUrl,audioUrl);
+    console.log("cache: Caching id:",videoId,"urls",videoUrl,audioUrl ?? '');
     if (audioUrl) {
         const audioCache = await caches.open("cached-audios");
         const audioResponse = await fetch(audioUrl);
@@ -160,8 +182,8 @@ async function cacheVideo(videoId, videoUrl=null, audioUrl=null) {
             console.warn("cache: response !ok",response);
             return false;
         }
-        console.log("Response Returned!");
         const responseClone = response.clone();
+        console.log("Response Returned",responseClone,", Extracting Blob...");
         const blob = await response.blob();
         if (blob.size==0) {
             console.warn("cache: Youtube Rate Limited.");
@@ -303,6 +325,7 @@ async function fetchPipedVideo(videoId, proxy=null) {
     for (const domain of PIPED_API_INSTANCES) {
         let targetUrl = wrapPiped(domain,videoId);
         if (proxy) {
+            console.log("fPip Original target:",targetUrl);
             targetUrl=wrapCloudflare(targetUrl);
         }
         console.log("fPip: Fetching target",targetUrl);
@@ -338,7 +361,7 @@ async function fetchPipedVideo(videoId, proxy=null) {
  */
 async function fetchCobaltVideo(videoId, proxy=null) {
     for (const domain of COBALT_INSTANCES) {
-        console.log("fCobalt: domain",domain)
+        console.log("fCobalt: domain",domain);
         const body = {
             url: `https://youtube.com/watch?v=${videoId}`,
             //vQuality: settings.videoQuality,
@@ -371,6 +394,75 @@ async function fetchCobaltVideo(videoId, proxy=null) {
         console.log("fCobalt: Domain",domain,"Returned:",data);
         return data;
     }
+}
+async function fetchVideo(videoId, instance, proxy=null) {
+    const method = instance.method, domain = instance.domain;
+    let targetUrl = domain;
+    if (method=="invidious") {targetUrl = wrapInvidious(domain, videoId);
+    } else if (method=="piped") {targetUrl = wrapPiped(domain, videoId);}
+    console.log("fetchVideo: Fetching",targetUrl);
+
+    let videoUrl=null, audioUrl=null, videoData=null;
+    if (method=="cobalt") {
+        const body = {
+            url: `https://youtube.com/watch?v=${videoId}`,
+        };
+        const headers = {'Accept': 'application/json','Content-Type': 'application/json',};
+        const method = {method: 'POST', headers: headers, body: JSON.stringify(body), signal: null};
+        console.log(method);
+        const data = await fetchToJson(domain, method);
+        if (!data) {return;}
+        if (data.status=='error' || !data.url) {
+            if (data.error?.code=="error.api.auth.jwt.missing") {
+                console.error("Missing jwt key",COBALT_KEYS[domain]);
+            }
+            console.error(data.error);
+            return;
+        }
+        videoUrl = data.url;
+    } else {
+        const data = await fetchWithCatch(targetUrl);
+        if (!data) {return;}
+        videoData = parseVideoData(data, method, videoId);
+        if (method=="invidious") {
+            const formats = { // +1 for webm
+                r144p: 0, r240p: 2, r360p: 4, r480p: 8,
+                r720p: 10, r1080p: 12
+            }; // TODO: TEST TS
+            videoUrl = videoData.videoStreams[formats.r480p+1].url; // 480p
+            audioUrl = videoData.audioStreams[3].url;
+        } else if (method=="piped") {
+            if (videoData.videoStreams && videoData.videoStreams.length>0) {
+                videoUrl = videoData.videoStreams[0].url;
+            } else {
+                console.warn("No Video Streams.");
+                return;
+            }
+        }
+    }
+    return {videoUrl: videoUrl, audioUrl: audioUrl, videoData: videoData}
+}
+/**
+ * 
+ * @param {String} videoId
+ * @returns 
+ */
+async function loadVideoF(videoId, playlistVData) {
+    for (const instance of INSTANCES) {
+        if (instance.method=="cobalt" && COBALT_KEYS[instance.domain]) {continue;}
+        const video = await fetchVideo(videoId, instance);
+        if (!video) {continue;} else {console.log("loadVideo:",video);}
+        
+
+        if (!await cacheVideo(videoId, data.url)) {
+            console.warn("fCobalt: Domain",domain,"url is null");
+            continue;
+        }
+        console.log("fCobalt: Domain",domain,"Returned:",data);
+        return data;
+    }
+    console.warn("All Available Instances Failed.");
+    return;
 }
 /**
  * parses Video Data into one format.
@@ -542,7 +634,7 @@ async function searchSimilarVideo(videoData) {
 async function loadVideoData(videoId, playlistVData={}) {
     console.log("LVD: Fetching",videoId);
     let pipeline="invidious";
-    let video = await fetchInvidiousVideo(videoId);
+    let video = null;//await fetchInvidiousVideo(videoId);
     if (!video) {
         console.log("LVD: Trying Piped...");
         pipeline="piped";
@@ -646,7 +738,7 @@ async function loadVideo(videoId, playlistVData, forceLoad=getLocalBoolean('forc
             return;
         }
     }
-    currentVideo = fullVideo;
+    console.log("LV LoadVideo task completed!");
     return true;
 }
 async function loadVideoIndex(videoIndex, forceLoad=getLocalBoolean('forceLoad'), saveAsId=null) {
@@ -654,7 +746,6 @@ async function loadVideoIndex(videoIndex, forceLoad=getLocalBoolean('forceLoad')
     currentVideoIndex = videoIndex;
     return await loadVideo(video.id, video, forceLoad, saveAsId);
 }
-
 /**
  * Loads a video into the videoplayer and audioplayer
  * @param {*} fullVideo 
@@ -665,32 +756,30 @@ async function loadPlayer(fullVideo) {
     console.log("LP: Loading fullVideo:",fullVideo);
     const videoUrl = fullVideo.videoUrl;
     const audioUrl = fullVideo.audioUrl;
-    const thumbnailUrl = fullVideo.videoData?.thumbnails?.[0]?.url || fullVideo.playlistVData?.thumbnails?.[0]?.url || '';
+    const thumbnailUrl = fullVideo.playlistVData.thumbnail || fullVideo.videoData?.thumbnails?.[0]?.url;
 
     videoPlayer.pause();
     videoPlayer.hidden = getLocalBoolean('useThumbnail');
     audioPlayer.currentTime = 0;
     audioPlayer.src = audioUrl ?? '';
 
-    const successfulLoad = await loadVideoPlayer(
-        fullVideo.title,
-        fullVideo.author,
-        thumbnailUrl,
-        videoUrl,
-    );
+    const successfulLoad = await loadVideoPlayer(fullVideo.title, fullVideo.author, thumbnailUrl, videoUrl);
+    if (!successfulLoad) {
+        console.warn("Non-successful load");
+        return false;
+    }
+    console.log("Loading was successful!");
+    currentVideo = fullVideo;
     if (getLocalBoolean('useThumbnail') || document.hidden) {
+        if (document.hidden) {
+            console.warn("Attempting playing audio while hidden!");
+        }
         if (audioUrl) {
             audioPlayer.play().then(() => updateMediaSession(videoData));
-        }
-        if (document.hidden) {
-            console.warn("Started playing audio while hidden!");
             return true;
         }
     }
-    console.log("Loading was successful!");
-    if (successfulLoad && !document.hidden) {
-        return playVideoPlayer();
-    }
+    return await playVideoPlayer();
 }
 /**
  * 
@@ -711,6 +800,19 @@ async function loadVideoPlayer(title, author, thumbnailUrl, videoUrl) {
         await videoPlayer.load();
     }
     return true;
+}
+async function playVideo() {
+    currentVideo = fullVideo;
+    if (getLocalBoolean('useThumbnail') || document.hidden) {
+        if (document.hidden) {
+            console.warn("Attempting playing audio while hidden!");
+        }
+        if (audioUrl) {
+            audioPlayer.play().then(() => updateMediaSession(videoData));
+            return true;
+        }
+    }
+    return await playVideoPlayer();
 }
 async function playVideoPlayer() {
     const videoPlayed = await videoPlayer.play().catch((error) => {
@@ -817,12 +919,13 @@ let isSeeking = false;
 
 async function initVideoEventListeners() {
     videoPlayer.addEventListener('play', () => {
-        console.log("play");
+        console.log("vplay");
         if (backgroundPlaybackStatus) {
             setTimeout(() => {
             backgroundPlaybackStatus = false;
             },100);
         } else {
+            console.log("cVideo",currentVideo);
             if ((currentVideo?.audioUrl ?? false) && audioPlayer?.paused) {
                 videoPlayer.currentTime = audioPlayer.currentTime;
                 audioPlayer.play().then(()=>{updateMediaSession(currentVideo)});
@@ -909,8 +1012,7 @@ async function initVideoEventListeners() {
 function initBoolSettings() {
     const settings = [
         "useThumbnail",
-        "forceLoad",
-        "forceSave"
+        "forceLoad", "forceSave"
     ]
     for (let setting of settings) {
         $(`#s_${setting}`).prop("checked", getLocalBoolean(setting));
@@ -928,11 +1030,15 @@ function toggleSettingsPanel() {settingsPanel.hidden = !settingsPanel.hidden;}
 function forceLoadPlaylist() {loadPlaylist(temp_playlistAddress,true);}
 initBoolSettings();
 
-fetchCobaltDirectory();
-fetchPipedInstances();
-fetchInvidiousDirectory().then(async () => {
+async function fetchAllDirectories() {
+    await Promise.all([
+        fetchCobaltDirectory(),
+        fetchPipedInstances(),
+        fetchInvidiousDirectory(),
+    ]);
     await loadPlaylist();
     showPlaylist();
-});
+}
+fetchAllDirectories();
 // Other INIT
 initVideoEventListeners();
