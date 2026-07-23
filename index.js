@@ -52,7 +52,7 @@ const wrapInvidious = (domain,vId)=>{return `https://${domain}/api/v1/videos/${v
  * https://github.com/TeamPiped/Piped/wiki/Instances/408b500c3e205e95a197d42b33345c1f207ba62b
  * https://awsmfoss.com/piped/
  */
-let PIPED_API_INSTANCES = [];
+const PIPED_API_INSTANCES = [];
 async function fetchPipedInstances() {
     console.log("Fetching Piped Directory...");
     function s(body) {
@@ -69,7 +69,6 @@ drgns.space | https://pipedapi.drgns.space | 🇺🇸 | No | ![](https://pipedap
 ducks.party | https://pipedapi.ducks.party | 🇳🇱 | No | ![](https://pipedapi.ducks.party/registered/badge)
 reallyaweso.me | https://pipedapi.reallyaweso.me | 🇩🇪 | No | ![](https://pipedapi.reallyaweso.me/registered/badge)
 private.coffee | https://api.piped.private.coffee | 🇦🇹 | No | ![](https://api.piped.private.coffee/registered/badge)
-darkness.services | https://pipedapi.darkness.services | 🇺🇸 | No | ![](https://pipedapi.darkness.services/registered/badge)
 orangenet.cc | https://pipedapi.orangenet.cc | 🇸🇮 | No | ![](https://pipedapi.orangenet.cc/registered/badge)`);
     console.log("Piped Instances:",PIPED_API_INSTANCES);
 }
@@ -278,7 +277,7 @@ async function fetchToJson(targetUrl, method={}) {
  */
 async function fetchPlaylistData(playlistId) {
     const p = popup("Fetching Playlist");
-    for (let domain of INVIDIOUS_INSTANCES) {
+    for (const domain of INVIDIOUS_INSTANCES) {
         const targetUrl = `https://${domain}/api/v1/playlists/${playlistId}`;
         console.log(`Polling server path: ${targetUrl}`);
         const p1 = popup("Fetching from "+domain);
@@ -312,6 +311,51 @@ async function fetchPlaylistData(playlistId) {
             author: data.author,
             authorThumbnail: '',
             description: data.description,
+            videos: videoData,
+            date: Date.now()/1000,
+        };
+        console.log(`Successfully imported ${videoData.length} videos from ${domain}`);
+        console.log(playlistData);
+        p.close();
+        return playlistData;
+    }
+    console.error("All Invidious API instances failed.");
+    p.close();
+    return null;
+}
+/** https://docs.piped.video/docs/api-documentation/ */
+async function fetchPlaylistDataPiped(playlistId) {
+    const p = popup("Fetching Playlist (Piped)");
+    for (const domain of PIPED_API_INSTANCES) {
+        const targetUrl = `${domain}/playlists/${playlistId}`;
+        console.log(`Polling server path: ${targetUrl}`);
+        const p1 = popup("Fetching from "+domain);
+        const data = await fetchWithCatch(targetUrl);
+        p1.close();
+        if (!data) {continue;}
+        //console.log("Returned data:",data);
+        if (!data.relatedStreams || data.relatedStreams.length<1) {
+            console.warn(`${domain} returned data, but 'relatedStreams' array was missing.`,data);
+            continue;
+        }
+        const videoData = data.relatedStreams.map((video, index) => {
+            const videoThumbnails = video.thumbnail;
+            return {
+                id: video.url.replace("/watch?v=",''),
+                title: video.title,
+                author: video.uploaderUrl.replace("/channel/",''),
+                index: index,
+                length: video.duration,
+                thumbnail: `https://img.youtube.com/vi/${video.videoId}/mqdefault.jpg`,
+                thumbnails: [`https://img.youtube.com/vi/${video.videoId}/mqdefault.jpg`],
+            };
+        });
+        const playlistData = {
+            id: playlistId,
+            title: data.name,
+            author: data.uploader,
+            authorThumbnail: '',
+            description: "(piped provides no description)",
             videos: videoData,
             date: Date.now()/1000,
         };
@@ -918,14 +962,17 @@ async function loadPlaylist(playlistId=temp_playlistAddress, forceLoad=getLocalB
     if (((saved_playlist?.date ?? 0) < (Date.now()/1000) - (60*60)) || forceLoad) {
         console.log("Force Loading playlist...",forceLoad, Date.now()/1000);
         playlist = await fetchPlaylistData(playlistId);
+        if (!(playlist && playlist.videos.length>0)) {
+            playlist = await fetchPlaylistDataPiped(playlistId);
+        }
         if (playlist && playlist.videos.length>0) {
             localStorage.setItem('playlist', JSON.stringify(playlist));
             console.log("Saved Playlist!");
             statusPopups.noPlaylist?.close();
             return playlist;
         } else {
-            console.warn("Could not load playlist from Invidious. Reverting to old.");
-            window.alert("Error: Could not load playlist from Invidious.");
+            console.warn("Could not load playlist. Reverting to old.");
+            window.alert("Error: Could not load playlist.");
             if (!statusPopups.noPlaylist) {statusPopups.noPlaylist = popup("Failed to get playlist");}
             playlist = saved_playlist;
         }
