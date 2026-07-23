@@ -14,24 +14,55 @@ span {
     font-size: 10px;
 }
 .box {
-    display: flex;
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr;
+}
+.box > * {
+    grid-column: 1;
+    grid-row: 1;
 }
 #top > * {
     position: relative;
 }
-#playlistContainer, #playlistContainer > * {
+#above {
+    display: flex;
+    justify-content: flex-start;
+    align-items: flex-start;
+
     z-index: 1;
+}
+#above > * {margin:5px;}
+.aboveBlock {
+    background: #444444;
+    border-radius: 10px;
 }
 #playlistContainer {
     width: 20vw;
-    background: #444444;
 
-    position: absolute;
-    margin-right: 5px;
-    border-radius: 10px;
-
+    position: relative;
+    
     transition: left 0.7s;
     transition-timing-function: ease;
+}
+#infoPopups {
+    position: relative;
+
+    display: flex;
+    flex-direction: column;
+    flex-wrap: wrap;
+}
+.popup {
+    background: #444444;
+    border-radius: 10px;
+
+    margin-bottom: 5px;
+    padding: 10px;
+
+    color: white;
+}
+.popup > p {
+    margin: 0;
 }
 #playlist {
     display: flex;
@@ -43,8 +74,7 @@ span {
     overflow-y: scroll;
 }
 .defaultPlaylistContainer {
-    left: 5px;
-    top: 5px;
+    left: 0px;
 }
 .hiddenPlaylistContainer {
     left: -22vw;

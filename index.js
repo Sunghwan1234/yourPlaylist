@@ -10,6 +10,21 @@ const thumbnail = document.getElementById("thumbnail");
 
 const settingsPanel = document.getElementById("s_settingsPanel");
 
+const popupPanel = document.getElementById("infoPopups");
+const popup = (name) => {
+    const popupElement = `
+        <div class='popup' id='${name}'>
+            <p>${name}</p>
+        </div>
+    `;
+    popupPanel.insertAdjacentHTML('beforeend', popupElement);
+    return {name:name,close:function(){const el=document.getElementById(name);if(el){el.remove();}}};
+}
+const closePopup = (name) => {
+    document.getElementById(name).remove();
+}
+const statusPopups = {};
+
 /**
  * https://api.invidious.io/
  * currently only api available is "inv.thepixora.com"
@@ -18,6 +33,7 @@ const INVIDIOUS_DIRECTORY = "https://api.invidious.io/instances.json";
 const INVIDIOUS_INSTANCES = [];
 const INVIDIOUS_API_INSTANCES = [];
 async function fetchInvidiousDirectory() {
+    const p = popup("Fetching Inv Directories...");
     const instances = await fetchWithCatch(INVIDIOUS_DIRECTORY);
     for (const instance of instances) {
         if (!instance[1].monitor || instance[1].monitor?.down || instance[1].type!=="https") {continue;}
@@ -27,6 +43,7 @@ async function fetchInvidiousDirectory() {
         }
     }
     console.log("fInvDir success",INVIDIOUS_INSTANCES);
+    p.close();
 }
 const wrapInvidious = (domain,vId)=>{return `https://${domain}/api/v1/videos/${vId}?local=true`;}
 /**
@@ -69,6 +86,7 @@ const COBALT_DIRECTORY = "https://cobalt.directory/api/working?type=api";
 let COBALT_INSTANCES = [];
 let COBALT_KEYS = {};
 async function fetchCobaltDirectory() {
+    const p = popup("Fetching Cobalt Directory...");
     console.log("Fetching Cobalt Directory...");
     const response = await fetchWithCatch(COBALT_DIRECTORY);
     if (response) {
@@ -80,6 +98,7 @@ async function fetchCobaltDirectory() {
         COBALT_KEYS[domain] = (instanceStatus?.cobalt.turnstileSitekey ?? null);
     }
     //console.log("cobalt keys:",COBALT_KEYS);
+    p.close();
 }
 
 let INSTANCES = [];
@@ -258,11 +277,13 @@ async function fetchToJson(targetUrl, method={}) {
  * @returns 
  */
 async function fetchPlaylistData(playlistId) {
+    const p = popup("Fetching Playlist");
     for (let domain of INVIDIOUS_INSTANCES) {
         const targetUrl = `https://${domain}/api/v1/playlists/${playlistId}`;
         console.log(`Polling server path: ${targetUrl}`);
-
+        const p1 = popup("Fetching from "+domain);
         const data = await fetchWithCatch(targetUrl);
+        p1.close();
         if (!data) {continue;}
         //console.log("Returned data:",data);
         if (!data.videos || data.videos.length<1) {
@@ -296,9 +317,11 @@ async function fetchPlaylistData(playlistId) {
         };
         console.log(`Successfully imported ${videoData.length} videos from ${domain}`);
         console.log(playlistData);
+        p.close();
         return playlistData;
     }
     console.error("All Invidious API instances failed.");
+    p.close();
     return null;
 }
 async function fetchInvidiousVideo(videoId, proxy=null) {
@@ -898,10 +921,12 @@ async function loadPlaylist(playlistId=temp_playlistAddress, forceLoad=getLocalB
         if (playlist && playlist.videos.length>0) {
             localStorage.setItem('playlist', JSON.stringify(playlist));
             console.log("Saved Playlist!");
+            statusPopups.noPlaylist?.close();
             return playlist;
         } else {
             console.warn("Could not load playlist from Invidious. Reverting to old.");
             window.alert("Error: Could not load playlist from Invidious.");
+            if (!statusPopups.noPlaylist) {statusPopups.noPlaylist = popup("Failed to get playlist");}
             playlist = saved_playlist;
         }
     } 
